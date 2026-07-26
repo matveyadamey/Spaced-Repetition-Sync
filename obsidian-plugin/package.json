@@ -1,0 +1,19 @@
+{
+  "name": "spaced-repetition-sync",
+  "version": "1.0.0",
+  "description": "Obsidian plugin for spaced repetition card sync",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck"
+  },
+  "keywords": ["obsidian", "spaced-repetition"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "esbuild": "^0.24.0",
+    "obsidian": "^1.7.2",
+    "typescript": "^5.6.3"
+  }
+}

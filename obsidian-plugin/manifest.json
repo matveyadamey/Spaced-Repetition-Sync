@@ -1,0 +1,10 @@
+{
+  "id": "spaced-repetition-sync",
+  "name": "Spaced Repetition Sync",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Синхронизация карточек вопрос–ответ с сервером интервального повторения.",
+  "author": "Spaced Repetition",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}
