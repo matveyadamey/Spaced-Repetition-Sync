@@ -48,7 +48,7 @@ jobs:
           import json
           version = '''${VERSION}'''
           for path in ('obsidian-plugin/manifest.json', 'manifest.json'):
-              with open(path, encoding='utf-8') as f:
+              with open(path, encoding='utf-8-sig') as f:
                   data = json.load(f)
               data['version'] = version
               with open(path, 'w', encoding='utf-8', newline='\n') as f:

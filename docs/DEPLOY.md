@@ -1,4 +1,4 @@
-﻿# Деплой на Railway и обновления плагина через BRAT
+# Деплой на Railway и обновления плагина через BRAT
 
 Репозиторий: https://github.com/matveyadamey/Spaced-Repetition-Sync
 

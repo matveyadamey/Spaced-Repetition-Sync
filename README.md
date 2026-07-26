@@ -1,4 +1,4 @@
-﻿# Spaced Repetition — сервис интервального повторения
+# Spaced Repetition — сервис интервального повторения
 
 Система для запоминания с Telegram-ботом, REST API и плагином Obsidian.
 
