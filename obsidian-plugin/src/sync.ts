@@ -1,3 +1,5 @@
+import { requestUrl } from "obsidian";
+
 import { ParsedCard } from "./parser";
 
 export interface SyncResult {
@@ -33,9 +35,13 @@ export async function syncCards(
   const base = serverUrl.replace(/\/+$/, "");
   const url = `${base}/api/v1/sync`;
 
-  let response: Response;
+  let status: number;
+  let data: unknown;
+
   try {
-    response = await fetch(url, {
+    // requestUrl обходит CORS-ограничения Obsidian (в отличие от fetch).
+    const response = await requestUrl({
+      url,
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -48,38 +54,39 @@ export async function syncCards(
           source_file: c.source_file,
         })),
       }),
+      throw: false,
     });
-  } catch {
+    status = response.status;
+    try {
+      data = response.json;
+    } catch {
+      data = undefined;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     throw new SyncError(
-      "Не удалось подключиться к серверу.\nПроверьте URL сервера и интернет-соединение.",
+      `Не удалось подключиться к серверу.\nПроверьте URL сервера и интернет-соединение.\n${detail}`,
       "network",
     );
   }
 
-  if (response.status === 401) {
+  if (status === 401) {
     throw new SyncError(
       "Токен недействителен.\nПолучите новый токен через Telegram-бота.",
       "auth",
     );
   }
 
-  if (response.status === 413) {
+  if (status === 413) {
     throw new SyncError("Превышен размер запроса.", "payload");
   }
 
-  if (response.status === 422) {
+  if (status === 422) {
     throw new SyncError("Некорректные карточки в запросе.", "validation");
   }
 
-  if (!response.ok) {
-    throw new SyncError(`Ошибка сервера (HTTP ${response.status}).`, "server");
-  }
-
-  let data: unknown;
-  try {
-    data = await response.json();
-  } catch {
-    throw new SyncError("Некорректный формат ответа сервера.", "format");
+  if (status < 200 || status >= 300) {
+    throw new SyncError(`Ошибка сервера (HTTP ${status}).`, "server");
   }
 
   if (

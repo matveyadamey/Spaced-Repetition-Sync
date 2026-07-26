@@ -48,15 +48,37 @@ Railway сам создаст `DATABASE_URL` у сервиса Postgres.
 ### Networking
 
 1. Сервис приложения → **Settings** → **Networking** → **Generate Domain**.
-2. Получите HTTPS URL вида:
+2. В настройках домена укажите **тот же порт, на котором слушает приложение**.
+
+Railway задаёт переменную `PORT` сам. Есть два рабочих варианта:
+
+**Вариант A (проще):** в Variables приложения задайте `PORT=8000`, а в Networking у домена тоже порт `8000`.
+
+**Вариант B:** посмотрите значение `PORT` в Variables Railway и в Networking укажите именно его (часто не 8000).
+
+3. Получите HTTPS URL вида:
 
 ```text
 https://<service>.up.railway.app
 ```
 
-Его укажите в Obsidian-плагине как **Server URL**.
+В плагине **Server URL** = этот адрес **без** `/` в конце и **без** `/api/...`:
 
-`PORT` Railway задаёт сам — Dockerfile уже слушает `${PORT}`.
+```text
+https://<service>.up.railway.app
+```
+
+не `http://...` и не `https://...:8000`.
+
+### Быстрая проверка в браузере
+
+Откройте:
+
+```text
+https://<ваш-домен>.up.railway.app/health
+```
+
+Должно быть `{"status":"ok"}`. Если страница не открывается — проблема не в плагине, а в деплое/порте/логах.
 
 ### Watch Paths (чтобы плагин не редеплоил backend)
 

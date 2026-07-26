@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.status import router as status_router
 from app.api.sync import router as sync_router
@@ -55,6 +56,13 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Spaced Repetition API", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(sync_router)
 app.include_router(status_router)
 

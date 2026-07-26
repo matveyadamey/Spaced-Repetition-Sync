@@ -26,7 +26,7 @@ __export(main_exports, {
   default: () => SpacedRepetitionPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // src/parser.ts
 function parseCards(content, delimiter, sourceFile) {
@@ -74,6 +74,7 @@ function dedupeByQuestion(cards) {
 }
 
 // src/sync.ts
+var import_obsidian = require("obsidian");
 var SyncError = class extends Error {
   constructor(message, kind) {
     super(message);
@@ -84,9 +85,11 @@ var SyncError = class extends Error {
 async function syncCards(serverUrl, token, cards) {
   const base = serverUrl.replace(/\/+$/, "");
   const url = `${base}/api/v1/sync`;
-  let response;
+  let status;
+  let data;
   try {
-    response = await fetch(url, {
+    const response = await (0, import_obsidian.requestUrl)({
+      url,
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -98,34 +101,38 @@ async function syncCards(serverUrl, token, cards) {
           answer: c.answer,
           source_file: c.source_file
         }))
-      })
+      }),
+      throw: false
     });
-  } catch {
+    status = response.status;
+    try {
+      data = response.json;
+    } catch {
+      data = void 0;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     throw new SyncError(
-      "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C\u0441\u044F \u043A \u0441\u0435\u0440\u0432\u0435\u0440\u0443.\n\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0438 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442-\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435.",
+      `\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C\u0441\u044F \u043A \u0441\u0435\u0440\u0432\u0435\u0440\u0443.
+\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0438 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442-\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435.
+${detail}`,
       "network"
     );
   }
-  if (response.status === 401) {
+  if (status === 401) {
     throw new SyncError(
       "\u0422\u043E\u043A\u0435\u043D \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D.\n\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u0435 \u043D\u043E\u0432\u044B\u0439 \u0442\u043E\u043A\u0435\u043D \u0447\u0435\u0440\u0435\u0437 Telegram-\u0431\u043E\u0442\u0430.",
       "auth"
     );
   }
-  if (response.status === 413) {
+  if (status === 413) {
     throw new SyncError("\u041F\u0440\u0435\u0432\u044B\u0448\u0435\u043D \u0440\u0430\u0437\u043C\u0435\u0440 \u0437\u0430\u043F\u0440\u043E\u0441\u0430.", "payload");
   }
-  if (response.status === 422) {
+  if (status === 422) {
     throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0435 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.", "validation");
   }
-  if (!response.ok) {
-    throw new SyncError(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 (HTTP ${response.status}).`, "server");
-  }
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.", "format");
+  if (status < 200 || status >= 300) {
+    throw new SyncError(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 (HTTP ${status}).`, "server");
   }
   if (typeof data !== "object" || data === null || !("status" in data) || !("added" in data) || !("updated" in data) || !("deleted" in data)) {
     throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.", "format");
@@ -156,7 +163,7 @@ var DEFAULT_SETTINGS = {
   delimiter: "::",
   autoSyncOnStartup: false
 };
-var SpacedRepetitionPlugin = class extends import_obsidian.Plugin {
+var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -179,11 +186,11 @@ var SpacedRepetitionPlugin = class extends import_obsidian.Plugin {
   }
   async runSync(fromStartup = false) {
     if (!this.settings.token.trim()) {
-      new import_obsidian.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
+      new import_obsidian2.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
       return;
     }
     if (!this.settings.serverUrl.trim()) {
-      new import_obsidian.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
+      new import_obsidian2.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
       return;
     }
     try {
@@ -200,12 +207,12 @@ var SpacedRepetitionPlugin = class extends import_obsidian.Plugin {
         this.settings.token.trim(),
         unique
       );
-      new import_obsidian.Notice(formatSyncNotice(result), 8e3);
+      new import_obsidian2.Notice(formatSyncNotice(result), 8e3);
     } catch (error) {
       if (error instanceof SyncError) {
-        new import_obsidian.Notice(error.message, 8e3);
+        new import_obsidian2.Notice(error.message, 8e3);
       } else {
-        new import_obsidian.Notice("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438.", 8e3);
+        new import_obsidian2.Notice("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438.", 8e3);
       }
       if (!fromStartup) {
         console.error(error);
@@ -219,7 +226,7 @@ var SpacedRepetitionPlugin = class extends import_obsidian.Plugin {
     await this.saveData(this.settings);
   }
 };
-var SpacedRepetitionSettingTab = class extends import_obsidian.PluginSettingTab {
+var SpacedRepetitionSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -228,25 +235,25 @@ var SpacedRepetitionSettingTab = class extends import_obsidian.PluginSettingTab 
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Spaced Repetition Sync" });
-    new import_obsidian.Setting(containerEl).setName("Token").setDesc("\u0422\u043E\u043A\u0435\u043D \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u0438\u0437 Telegram-\u0431\u043E\u0442\u0430 (/token)").addText(
+    new import_obsidian2.Setting(containerEl).setName("Token").setDesc("\u0422\u043E\u043A\u0435\u043D \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u0438\u0437 Telegram-\u0431\u043E\u0442\u0430 (/token)").addText(
       (text) => text.setPlaceholder("\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0442\u043E\u043A\u0435\u043D").setValue(this.plugin.settings.token).onChange(async (value) => {
         this.plugin.settings.token = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Server URL").setDesc("\u0411\u0430\u0437\u043E\u0432\u044B\u0439 HTTPS URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0431\u0435\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u044E\u0449\u0435\u0433\u043E \u0441\u043B\u044D\u0448\u0430").addText(
+    new import_obsidian2.Setting(containerEl).setName("Server URL").setDesc("\u0411\u0430\u0437\u043E\u0432\u044B\u0439 HTTPS URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0431\u0435\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u044E\u0449\u0435\u0433\u043E \u0441\u043B\u044D\u0448\u0430").addText(
       (text) => text.setPlaceholder("https://example.com").setValue(this.plugin.settings.serverUrl).onChange(async (value) => {
         this.plugin.settings.serverUrl = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Delimiter").setDesc("\u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u044C \u043C\u0435\u0436\u0434\u0443 \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u043C \u0438 \u043E\u0442\u0432\u0435\u0442\u043E\u043C").addText(
+    new import_obsidian2.Setting(containerEl).setName("Delimiter").setDesc("\u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u044C \u043C\u0435\u0436\u0434\u0443 \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u043C \u0438 \u043E\u0442\u0432\u0435\u0442\u043E\u043C").addText(
       (text) => text.setPlaceholder("::").setValue(this.plugin.settings.delimiter).onChange(async (value) => {
         this.plugin.settings.delimiter = value || "::";
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Automatic synchronization on startup").setDesc("\u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 Obsidian").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Automatic synchronization on startup").setDesc("\u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 Obsidian").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoSyncOnStartup).onChange(async (value) => {
         this.plugin.settings.autoSyncOnStartup = value;
         await this.plugin.saveSettings();
