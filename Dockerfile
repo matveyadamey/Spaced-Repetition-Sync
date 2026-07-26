@@ -1,15 +1,16 @@
-# AWS Public ECR mirror of Docker Hub (avoids registry-1.docker.io timeouts)
+# Root Dockerfile for Railway / Git-based PaaS (context = repository root).
 FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ .
 
 EXPOSE 8000
 

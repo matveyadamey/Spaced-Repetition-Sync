@@ -1,0 +1,82 @@
+name: Release Obsidian plugin (BRAT)
+
+# Создаёт GitHub Release с main.js / manifest.json / styles.css.
+# BRAT подхватывает обновления из релизов автоматически.
+#
+# Как выпустить:
+#   1. Обновите version в obsidian-plugin/manifest.json (и корневом manifest.json)
+#   2. Закоммитьте и запушьте
+#   3. Создайте и запушьте тег = версии, например: git tag 1.0.1 && git push origin 1.0.1
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: obsidian-plugin/package-lock.json
+
+      - name: Resolve version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved plugin version: ${VERSION}"
+
+      - name: Sync manifest versions
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          python3 -c "
+          import json
+          version = '''${VERSION}'''
+          for path in ('obsidian-plugin/manifest.json', 'manifest.json'):
+              with open(path, encoding='utf-8') as f:
+                  data = json.load(f)
+              data['version'] = version
+              with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                  json.dump(data, f, ensure_ascii=False, indent=2)
+                  f.write('\n')
+          "
+
+      - name: Build plugin
+        working-directory: obsidian-plugin
+        run: |
+          npm ci
+          npm run build
+
+      - name: Ensure release assets exist
+        run: |
+          test -f obsidian-plugin/main.js
+          test -f obsidian-plugin/manifest.json
+          test -f obsidian-plugin/styles.css
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            obsidian-plugin/main.js
+            obsidian-plugin/manifest.json
+            obsidian-plugin/styles.css
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

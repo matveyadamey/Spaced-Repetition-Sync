@@ -77,7 +77,21 @@ pytest
 
 ## Obsidian-плагин
 
-Сборка:
+### Через BRAT (рекомендуется)
+
+1. Установите community-плагин **BRAT**.
+2. Команда: **BRAT: Add a beta plugin for testing**.
+3. Репозиторий:
+
+```text
+matveyadamey/Spaces-Repetition-Sync
+```
+
+4. Выберите latest — обновления приходят из GitHub Releases автоматически.
+
+Подробнее: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+### Ручная установка / сборка
 
 ```bash
 cd obsidian-plugin
@@ -87,31 +101,11 @@ npm run build
 
 После сборки появятся `main.js`, `manifest.json`, `styles.css`.
 
-### Установка вручную
-
-1. Создайте папку в vault:
+Скопируйте их в:
 
 ```text
 <Vault>/.obsidian/plugins/spaced-repetition-sync/
 ```
-
-2. Скопируйте туда:
-
-- `main.js`
-- `manifest.json`
-- `styles.css`
-
-3. Включите плагин в настройках Obsidian → Community plugins.
-
-4. В настройках плагина укажите:
-
-- **Token** — из `/token` в Telegram
-- **Server URL** — HTTPS адрес сервера
-- **Delimiter** — по умолчанию `::`
-
-5. Команда палитры: **Отправить карточки на сервер**.
-
-Подробнее: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 
 ## Команды бота
 
@@ -179,3 +173,4 @@ docker-compose.yml
 
 - [Руководство пользователя](docs/USER_GUIDE.md)
 - [Руководство разработчика](docs/DEVELOPER.md)
+- [Деплой Railway + BRAT](docs/DEPLOY.md)

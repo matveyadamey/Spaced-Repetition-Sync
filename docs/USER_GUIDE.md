@@ -18,7 +18,23 @@
 
 ## 3. Установите Obsidian-плагин
 
-1. Соберите плагин или возьмите готовые файлы `main.js`, `manifest.json`, `styles.css`.
+### Вариант A — через BRAT (с автообновлениями)
+
+1. Установите community-плагин **BRAT**.
+2. Команда палитры: **BRAT: Add a beta plugin for testing**.
+3. Укажите репозиторий:
+
+```text
+matveyadamey/Spaces-Repetition-Sync
+```
+
+4. Выберите **latest**.
+5. Включите **Spaced Repetition Sync** в списке плагинов.
+
+### Вариант B — вручную
+
+1. Возьмите из GitHub Release файлы `main.js`, `manifest.json`, `styles.css`
+   или соберите плагин локально.
 2. Создайте каталог:
 
 ```text
