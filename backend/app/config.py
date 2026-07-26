@@ -1,4 +1,4 @@
-from pydantic import field_validator
+﻿from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_new_cards_per_session: int = 20
     plugin_install_url: str = (
-        "https://github.com/matveyadamey/Spaces-Repetition-Sync#установка-через-brat"
+        "https://github.com/matveyadamey/Spaced-Repetition-Sync#установка-через-brat"
     )
     max_request_body_bytes: int = 10 * 1024 * 1024
 

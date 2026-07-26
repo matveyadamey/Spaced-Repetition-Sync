@@ -1,4 +1,4 @@
-# Spaced Repetition — сервис интервального повторения
+﻿# Spaced Repetition — сервис интервального повторения
 
 Система для запоминания с Telegram-ботом, REST API и плагином Obsidian.
 
@@ -84,7 +84,7 @@ pytest
 3. Репозиторий:
 
 ```text
-matveyadamey/Spaces-Repetition-Sync
+matveyadamey/Spaced-Repetition-Sync
 ```
 
 4. Выберите latest — обновления приходят из GitHub Releases автоматически.

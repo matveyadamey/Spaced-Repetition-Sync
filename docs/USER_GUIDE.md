@@ -1,4 +1,4 @@
-# Руководство пользователя
+﻿# Руководство пользователя
 
 ## 1. Создайте бота
 
@@ -25,7 +25,7 @@
 3. Укажите репозиторий:
 
 ```text
-matveyadamey/Spaces-Repetition-Sync
+matveyadamey/Spaced-Repetition-Sync
 ```
 
 4. Выберите **latest**.

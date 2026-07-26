@@ -1,6 +1,6 @@
-# Деплой на Railway и обновления плагина через BRAT
+﻿# Деплой на Railway и обновления плагина через BRAT
 
-Репозиторий: https://github.com/matveyadamey/Spaces-Repetition-Sync
+Репозиторий: https://github.com/matveyadamey/Spaced-Repetition-Sync
 
 ---
 
@@ -29,7 +29,7 @@ Railway сам создаст `DATABASE_URL` у сервиса Postgres.
 
 ## 4. Задеплойте backend из GitHub
 
-1. **+ New** → **GitHub Repo** → `Spaces-Repetition-Sync`.
+1. **+ New** → **GitHub Repo** → `Spaced-Repetition-Sync`.
 2. Railway подхватит корневой `Dockerfile` и `railway.toml`.
 3. Откройте сервис приложения → **Variables** и добавьте:
 
@@ -39,7 +39,7 @@ Railway сам создаст `DATABASE_URL` у сервиса Postgres.
 | `BOT_TOKEN` | токен от BotFather |
 | `ENVIRONMENT` | `production` |
 | `LOG_LEVEL` | `INFO` |
-| `PLUGIN_INSTALL_URL` | `https://github.com/matveyadamey/Spaces-Repetition-Sync#установка-через-brat` |
+| `PLUGIN_INSTALL_URL` | `https://github.com/matveyadamey/Spaced-Repetition-Sync#установка-через-brat` |
 
 > Имя сервиса БД может отличаться (`Postgres`, `PostgreSQL`, …). В UI Variables нажмите **Add Variable** → **Add Reference** и выберите `DATABASE_URL` у Postgres.
 
@@ -112,7 +112,7 @@ GET https://<your-service>.up.railway.app/health
 4. Вставьте:
 
 ```text
-matveyadamey/Spaces-Repetition-Sync
+matveyadamey/Spaced-Repetition-Sync
 ```
 
 5. Выберите **latest** (автообновления) или конкретную версию (frozen).
