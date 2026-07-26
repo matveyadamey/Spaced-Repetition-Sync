@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from app.bot.keyboards import (
     rate_keyboard,
@@ -64,7 +64,6 @@ async def cmd_token(message: Message) -> None:
         await session.commit()
     logger.info("Command /token for telegram_id=%s", message.from_user.id)
     await message.answer(
-        "Плагин успешно авторизован новым токеном.\n\n"
         f"Ваш токен:\n{token}\n\n"
         "Сохраните его. Повторно показать этот токен невозможно."
     )
@@ -180,22 +179,6 @@ async def cmd_stats(message: Message) -> None:
         f"Повторено сегодня: {stats['reviewed_today']}\n"
         f"Изучено: {stats['learned_pct']}%"
     )
-
-
-@router.message(Command("set_delim"))
-async def cmd_set_delim(message: Message, command: CommandObject) -> None:
-    if message.from_user is None:
-        return
-    delimiter = (command.args or "").strip()
-    if not delimiter:
-        await message.answer("Укажите разделитель.\nПример: /set_delim ::")
-        return
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, message.from_user.id)
-        user.delimiter = delimiter
-        await session.commit()
-    logger.info("Command /set_delim telegram_id=%s", message.from_user.id)
-    await message.answer(f"Разделитель сохранён: {delimiter}")
 
 
 @router.message(Command("reset"))

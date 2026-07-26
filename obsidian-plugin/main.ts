@@ -3,16 +3,16 @@ import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { ParsedCard, dedupeByQuestion, parseCards } from "./src/parser";
 import { SyncError, formatSyncNotice, syncCards } from "./src/sync";
 
+const SERVER_URL = "https://spaced-repetition-sync-production.up.railway.app";
+
 interface SpacedRepetitionSettings {
   token: string;
-  serverUrl: string;
   delimiter: string;
   autoSyncOnStartup: boolean;
 }
 
 const DEFAULT_SETTINGS: SpacedRepetitionSettings = {
   token: "",
-  serverUrl: "https://your-server.example.com",
   delimiter: "::",
   autoSyncOnStartup: false,
 };
@@ -45,10 +45,6 @@ export default class SpacedRepetitionPlugin extends Plugin {
       new Notice("Укажите токен в настройках плагина.");
       return;
     }
-    if (!this.settings.serverUrl.trim()) {
-      new Notice("Укажите URL сервера в настройках плагина.");
-      return;
-    }
 
     try {
       const files = this.app.vault.getMarkdownFiles();
@@ -61,11 +57,7 @@ export default class SpacedRepetitionPlugin extends Plugin {
       }
 
       const unique = dedupeByQuestion(allCards);
-      const result = await syncCards(
-        this.settings.serverUrl.trim(),
-        this.settings.token.trim(),
-        unique,
-      );
+      const result = await syncCards(SERVER_URL, this.settings.token.trim(), unique);
       new Notice(formatSyncNotice(result), 8000);
     } catch (error) {
       if (error instanceof SyncError) {
@@ -115,21 +107,8 @@ class SpacedRepetitionSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Server URL")
-      .setDesc("Базовый HTTPS URL сервера без завершающего слэша")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://example.com")
-          .setValue(this.plugin.settings.serverUrl)
-          .onChange(async (value) => {
-            this.plugin.settings.serverUrl = value.trim();
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
       .setName("Delimiter")
-      .setDesc("Разделитель между вопросом и ответом")
+      .setDesc("Разделитель между вопросом и ответом в карточках")
       .addText((text) =>
         text
           .setPlaceholder("::")

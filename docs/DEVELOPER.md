@@ -116,34 +116,10 @@ app.vault.getMarkdownFiles()
 app.vault.read(file)
 ```
 
-## Docker Hub / зеркала
-
-Образы в `Dockerfile` берутся с зеркала
-`public.ecr.aws/docker/library/...` (официальные образы Docker Hub через AWS Public ECR),
-чтобы не зависеть от доступности `registry-1.docker.io`.
-
-Альтернатива — зеркало в Docker Desktop:
-Settings → Docker Engine → добавить, например:
-
-```json
-{
-  "registry-mirrors": ["https://mirror.gcr.io"]
-}
-```
-
-затем Apply & Restart.
 
 ## Деплой
 
 Пошаговая инструкция: [DEPLOY.md](DEPLOY.md) (Railway из GitHub + релизы плагина для BRAT).
-
-## Production
-
-1. Соберите образ backend (корневой `Dockerfile` или `backend/Dockerfile`).
-2. Задайте env на PaaS.
-3. Подключите managed PostgreSQL или сервис `db` из compose.
-4. Откройте HTTPS endpoint для плагина.
-5. Long polling не требует публичного webhook URL для Telegram, но API должен быть доступен плагину по HTTPS.
 
 ## Логирование
 

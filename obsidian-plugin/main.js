@@ -157,9 +157,9 @@ function formatSyncNotice(result) {
 }
 
 // main.ts
+var SERVER_URL = "https://spaced-repetition-sync-production.up.railway.app";
 var DEFAULT_SETTINGS = {
   token: "",
-  serverUrl: "https://your-server.example.com",
   delimiter: "::",
   autoSyncOnStartup: false
 };
@@ -189,10 +189,6 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
       new import_obsidian2.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
       return;
     }
-    if (!this.settings.serverUrl.trim()) {
-      new import_obsidian2.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
-      return;
-    }
     try {
       const files = this.app.vault.getMarkdownFiles();
       const allCards = [];
@@ -202,11 +198,7 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
         allCards.push(...cards);
       }
       const unique = dedupeByQuestion(allCards);
-      const result = await syncCards(
-        this.settings.serverUrl.trim(),
-        this.settings.token.trim(),
-        unique
-      );
+      const result = await syncCards(SERVER_URL, this.settings.token.trim(), unique);
       new import_obsidian2.Notice(formatSyncNotice(result), 8e3);
     } catch (error) {
       if (error instanceof SyncError) {
@@ -241,13 +233,7 @@ var SpacedRepetitionSettingTab = class extends import_obsidian2.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Server URL").setDesc("\u0411\u0430\u0437\u043E\u0432\u044B\u0439 HTTPS URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0431\u0435\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u044E\u0449\u0435\u0433\u043E \u0441\u043B\u044D\u0448\u0430").addText(
-      (text) => text.setPlaceholder("https://example.com").setValue(this.plugin.settings.serverUrl).onChange(async (value) => {
-        this.plugin.settings.serverUrl = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian2.Setting(containerEl).setName("Delimiter").setDesc("\u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u044C \u043C\u0435\u0436\u0434\u0443 \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u043C \u0438 \u043E\u0442\u0432\u0435\u0442\u043E\u043C").addText(
+    new import_obsidian2.Setting(containerEl).setName("Delimiter").setDesc("\u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u044C \u043C\u0435\u0436\u0434\u0443 \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u043C \u0438 \u043E\u0442\u0432\u0435\u0442\u043E\u043C \u0432 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0430\u0445").addText(
       (text) => text.setPlaceholder("::").setValue(this.plugin.settings.delimiter).onChange(async (value) => {
         this.plugin.settings.delimiter = value || "::";
         await this.plugin.saveSettings();

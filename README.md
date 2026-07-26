@@ -1,155 +1,43 @@
-# Spaced Repetition — сервис интервального повторения
+# Spaced Repetition Sync
 
-Система для запоминания с Telegram-ботом, REST API и плагином Obsidian.
+Сервис интервального повторения: карточки пишете в Obsidian, повторяете в Telegram.
 
-## Компоненты
+---
 
-| Компонент | Назначение |
-|-----------|------------|
-| Telegram-бот | Повторения, статистика, токены, настройки |
-| FastAPI | REST API синхронизации и статуса |
-| PostgreSQL | Пользователи, карточки, прогресс |
-| Obsidian-плагин | Парсинг карточек и синхронизация с сервером |
+## Установка с нуля
 
-Прогресс обучения хранится **только на сервере**. Плагин не записывает интервалы в файлы Obsidian.
-
-## Быстрый старт (Docker)
-
-1. Скопируйте окружение:
-
-```bash
-cp .env.example .env
-```
-
-2. Укажите `BOT_TOKEN` от [@BotFather](https://t.me/BotFather).
-
-3. Запустите:
-
-```bash
-docker compose up --build
-```
-
-Если Docker Hub недоступен, в проекте уже используются зеркала AWS Public ECR
-(`public.ecr.aws/docker/library/...`). Подробнее: [docs/DEVELOPER.md](docs/DEVELOPER.md).
-
-API: `http://localhost:8000`  
-Health: `http://localhost:8000/health`  
-Документация OpenAPI: `http://localhost:8000/docs`
-
-В production используйте HTTPS URL, который выдаёт PaaS.
-
-## Локальная разработка без Docker (backend)
-
-```bash
-cd backend
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-Поднимите PostgreSQL (через `docker compose up db` или локально) и задайте:
-
-```env
-BOT_TOKEN=...
-DATABASE_URL=postgresql+asyncpg://spaced:spaced@localhost:5432/spaced_repetition
-```
-
-Миграции и запуск:
-
-```bash
-cd backend
-alembic upgrade head
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Telegram-бот стартует вместе с приложением через long polling.
-
-## Тесты
-
-```bash
-cd backend
-pytest
-```
-
-## Obsidian-плагин
-
-### Через BRAT (рекомендуется)
-
-1. Установите community-плагин **BRAT**.
-2. Команда: **BRAT: Add a beta plugin for testing**.
-3. Репозиторий:
+1. Скачайте и установите [Obsidian](https://obsidian.md/).
+2. Откройте настройки → **Community plugins** → включите сторонние плагины и установите **BRAT**.
+3. На боковой панели нажмите на появившийся значок BRAT — откроется меню.
+4. Выберите **Add a beta plugin for testing**.
+5. В поле **Repository** вставьте:
 
 ```text
 matveyadamey/Spaced-Repetition-Sync
 ```
 
-4. Выберите latest — обновления приходят из GitHub Releases автоматически.
+6. В **Select a version** выберите **latest**.
+7. Нажмите **Add plugin**. Плагин установится.
+8. Откройте настройки → **Сторонние плагины** → **Spaced Repetition Sync** и включите его.
+9. Откройте Telegram-бота сервиса, отправьте `/start`, затем `/token`. Бот покажет токен **один раз** — сохраните его.
+10. Вставьте токен в поле **Token** в настройках плагина.
+11. В поле **Delimiter** укажите разделитель между вопросом и ответом (по умолчанию `::`).
+12. На боковой панели нажмите `>_` (командная палитра).
+13. В поиске введите «отправить карточки» и выберите **Отправить карточки на сервер**.
 
-Подробнее: [docs/DEPLOY.md](docs/DEPLOY.md).
+Настройка завершена.
 
-### Ручная установка / сборка
+---
 
-```bash
-cd obsidian-plugin
-npm install
-npm run build
-```
+## Формат карточек в Obsidian
 
-После сборки появятся `main.js`, `manifest.json`, `styles.css`.
-
-Скопируйте их в:
-
-```text
-<Vault>/.obsidian/plugins/spaced-repetition-sync/
-```
-
-## Команды бота
-
-| Команда | Описание |
-|---------|----------|
-| `/start` | Приветствие и инструкция |
-| `/token` | Новый токен для плагина (показывается один раз) |
-| `/review` | Сессия повторения |
-| `/stats` | Статистика |
-| `/set_delim ::` | Разделитель карточек |
-| `/reset` | Сброс прогресса (с подтверждением) |
-
-## API
-
-### `POST /api/v1/sync`
-
-```http
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-```json
-{
-  "cards": [
-    {
-      "question": "Что такое Python?",
-      "answer": "Язык программирования",
-      "source_file": "notes.md"
-    }
-  ]
-}
-```
-
-### `GET /api/v1/status`
-
-Возвращает `user_id`, `cards_count`, `last_sync_at`, `delimiter`.
-
-## Формат карточек
+В любом Markdown-файле:
 
 ```text
 Что такое Python? :: Язык программирования
 ```
 
-Многострочный:
+Или многострочно:
 
 ```text
 Что такое Python?
@@ -157,20 +45,27 @@ Content-Type: application/json
 Язык программирования.
 ```
 
-В вопросе обязателен символ `?`. Карточки разделяются пустыми строками.
+Карточки разделяйте пустыми строками. В тексте **вопроса** обязательно должен быть символ `?`, иначе строка не считается карточкой.
 
-## Структура репозитория
+После правок снова выполните команду **Отправить карточки на сервер**.
 
-```text
-backend/           # FastAPI + aiogram + SQLAlchemy
-obsidian-plugin/   # TypeScript плагин
-docs/              # Документация
-docker-compose.yml
-.env.example
-```
+---
 
-## Документация
+## Команды Telegram-бота
 
-- [Руководство пользователя](docs/USER_GUIDE.md)
+| Команда | Что делает |
+|---------|------------|
+| `/start` | Приветствие и краткая инструкция |
+| `/token` | Новый токен для плагина (показывается один раз; старый сразу перестаёт работать) |
+| `/review` | Сессия повторения: вопрос → ответ → оценка (Сложно / Средне / Легко) |
+| `/stats` | Статистика: всего карточек, к повторению сегодня, повторено сегодня, изучено % |
+| `/reset` | Сброс прогресса (карточки остаются; нужно подтверждение кнопкой) |
+
+Ежедневный цикл: правите карточки в Obsidian → синхронизируете → в Telegram `/review`.
+
+---
+
+## Документация для разработчиков
+
+- [Деплой (Railway + BRAT)](docs/DEPLOY.md)
 - [Руководство разработчика](docs/DEVELOPER.md)
-- [Деплой Railway + BRAT](docs/DEPLOY.md)
