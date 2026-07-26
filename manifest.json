@@ -1,9 +1,9 @@
 {
   "id": "spaced-repetition-sync",
   "name": "Spaced Repetition Sync",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "minAppVersion": "1.5.0",
-  "description": "Синхронизация карточек вопрос–ответ с сервером интервального повторения.",
+  "description": "Sync question-answer cards from Obsidian to the spaced repetition server.",
   "author": "matveyadamey",
   "authorUrl": "https://github.com/matveyadamey/Spaced-Repetition-Sync",
   "isDesktopOnly": false

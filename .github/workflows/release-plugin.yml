@@ -1,12 +1,9 @@
 name: Release Obsidian plugin (BRAT)
 
 # Создаёт GitHub Release с main.js / manifest.json / styles.css.
-# BRAT подхватывает обновления из релизов автоматически.
 #
-# Как выпустить:
-#   1. Обновите version в obsidian-plugin/manifest.json (и корневом manifest.json)
-#   2. Закоммитьте и запушьте
-#   3. Создайте и запушьте тег = версии, например: git tag 1.0.1 && git push origin 1.0.1
+# Выпуск:
+#   git tag 1.0.4 && git push origin 1.0.4
 
 on:
   push:
@@ -40,21 +37,35 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved plugin version: ${VERSION}"
 
-      - name: Sync manifest versions
+      - name: Sync and validate manifests
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          python3 -c "
+          python3 <<'PY'
           import json
-          version = '''${VERSION}'''
-          for path in ('obsidian-plugin/manifest.json', 'manifest.json'):
-              with open(path, encoding='utf-8-sig') as f:
-                  data = json.load(f)
-              data['version'] = version
-              with open(path, 'w', encoding='utf-8', newline='\n') as f:
-                  json.dump(data, f, ensure_ascii=False, indent=2)
-                  f.write('\n')
-          "
+          import os
+          import sys
+
+          version = os.environ["VERSION"]
+          for path in ("obsidian-plugin/manifest.json", "manifest.json"):
+              raw = open(path, "rb").read()
+              if raw.startswith(b"\xef\xbb\xbf"):
+                  print(f"ERROR: UTF-8 BOM in {path}", file=sys.stderr)
+                  sys.exit(1)
+              data = json.loads(raw.decode("utf-8"))
+              required = ["id", "name", "version", "minAppVersion", "description"]
+              missing = [k for k in required if k not in data or data[k] in ("", None)]
+              if missing:
+                  print(f"ERROR: {path} missing fields: {missing}", file=sys.stderr)
+                  sys.exit(1)
+              data["version"] = version
+              # ASCII-safe JSON avoids encoding issues for some BRAT/GitHub paths
+              text = json.dumps(data, ensure_ascii=True, indent=2) + "\n"
+              open(path, "w", encoding="ascii", newline="\n").write(text)
+              print(f"OK {path} -> version {version}, id={data['id']}")
+          PY
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Build plugin
         working-directory: obsidian-plugin
@@ -62,11 +73,16 @@ jobs:
           npm ci
           npm run build
 
-      - name: Ensure release assets exist
+      - name: Prepare release assets
+        shell: bash
         run: |
-          test -f obsidian-plugin/main.js
-          test -f obsidian-plugin/manifest.json
-          test -f obsidian-plugin/styles.css
+          mkdir -p release
+          cp obsidian-plugin/main.js release/main.js
+          cp obsidian-plugin/manifest.json release/manifest.json
+          cp obsidian-plugin/styles.css release/styles.css
+          python3 -c "import json; m=json.load(open('release/manifest.json')); assert m['id']=='spaced-repetition-sync'; assert m['version']=='${{ steps.version.outputs.version }}'; print(m)"
+          test -s release/main.js
+          ls -la release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -74,9 +90,10 @@ jobs:
           name: ${{ steps.version.outputs.version }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            obsidian-plugin/main.js
-            obsidian-plugin/manifest.json
-            obsidian-plugin/styles.css
+            release/main.js
+            release/manifest.json
+            release/styles.css
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
