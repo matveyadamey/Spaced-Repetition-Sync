@@ -13,7 +13,7 @@
 5. В поле **Repository** вставьте:
 
 ```text
-matveyadamey/Spaced-Repetition-Sync
+https://github.com/matveyadamey/Spaced-Repetition-Sync
 ```
 
 6. В **Select a version** выберите **latest**.
