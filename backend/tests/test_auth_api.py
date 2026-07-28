@@ -23,9 +23,11 @@ async def test_sync_with_valid_token(client, user_with_token):
     response = await client.post(
         "/api/v1/sync",
         json={
+            "source_file": "x.md",
+            "deck": None,
             "cards": [
                 {"question": "What is Python?", "answer": "A language", "source_file": "x.md"}
-            ]
+            ],
         },
         headers={"Authorization": f"Bearer {token}"},
     )

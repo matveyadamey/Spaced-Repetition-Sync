@@ -11,6 +11,11 @@ export interface SyncResult {
   errors: string[];
 }
 
+export interface DeckInfo {
+  id: number;
+  name: string;
+}
+
 export class SyncError extends Error {
   constructor(
     message: string,
@@ -27,67 +32,134 @@ export class SyncError extends Error {
   }
 }
 
-export async function syncCards(
-  serverUrl: string,
+function authHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function requestJson(
+  url: string,
   token: string,
-  cards: ParsedCard[],
-): Promise<SyncResult> {
-  const base = serverUrl.replace(/\/+$/, "");
-  const url = `${base}/api/v1/sync`;
-
-  let status: number;
-  let data: unknown;
-
+  options: { method?: string; body?: string } = {},
+): Promise<{ status: number; data: unknown }> {
   try {
-    // requestUrl обходит CORS-ограничения Obsidian (в отличие от fetch).
     const response = await requestUrl({
       url,
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        cards: cards.map((c) => ({
-          question: c.question,
-          answer: c.answer,
-          source_file: c.source_file,
-        })),
-      }),
+      method: options.method ?? "GET",
+      headers: authHeaders(token),
+      body: options.body,
       throw: false,
     });
-    status = response.status;
+    let data: unknown;
     try {
       data = response.json;
     } catch {
       data = undefined;
     }
+    return { status: response.status, data };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new SyncError(
-      `Не удалось подключиться к серверу.\nПроверьте URL сервера и интернет-соединение.\n${detail}`,
+      `Не удалось подключиться к серверу.\nПроверьте интернет-соединение.\n${detail}`,
       "network",
     );
   }
+}
 
+function raiseForStatus(status: number): void {
   if (status === 401) {
     throw new SyncError(
       "Токен недействителен.\nПолучите новый токен через Telegram-бота.",
       "auth",
     );
   }
-
   if (status === 413) {
     throw new SyncError("Превышен размер запроса.", "payload");
   }
-
   if (status === 422) {
-    throw new SyncError("Некорректные карточки в запросе.", "validation");
+    throw new SyncError("Некорректные данные в запросе.", "validation");
   }
-
+  if (status === 400) {
+    throw new SyncError("Ошибка запроса к серверу.", "validation");
+  }
   if (status < 200 || status >= 300) {
     throw new SyncError(`Ошибка сервера (HTTP ${status}).`, "server");
   }
+}
+
+export async function fetchDecks(serverUrl: string, token: string): Promise<DeckInfo[]> {
+  const base = serverUrl.replace(/\/+$/, "");
+  const { status, data } = await requestJson(`${base}/api/v1/decks`, token);
+  raiseForStatus(status);
+  if (typeof data !== "object" || data === null || !("decks" in data) || !Array.isArray((data as { decks: unknown }).decks)) {
+    throw new SyncError("Некорректный формат ответа сервера.", "format");
+  }
+  return ((data as { decks: DeckInfo[] }).decks || []).map((d) => ({
+    id: Number(d.id),
+    name: String(d.name),
+  }));
+}
+
+export async function createDeck(
+  serverUrl: string,
+  token: string,
+  name: string,
+): Promise<DeckInfo> {
+  const base = serverUrl.replace(/\/+$/, "");
+  const { status, data } = await requestJson(`${base}/api/v1/decks`, token, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (status === 400) {
+    const detail =
+      typeof data === "object" && data && "detail" in data
+        ? String((data as { detail: unknown }).detail)
+        : "Не удалось создать колоду.";
+    throw new SyncError(detail, "validation");
+  }
+  raiseForStatus(status);
+  if (typeof data !== "object" || data === null || !("id" in data) || !("name" in data)) {
+    throw new SyncError("Некорректный формат ответа сервера.", "format");
+  }
+  return {
+    id: Number((data as DeckInfo).id),
+    name: String((data as DeckInfo).name),
+  };
+}
+
+export async function syncCards(
+  serverUrl: string,
+  token: string,
+  sourceFile: string,
+  deck: string | null,
+  cards: ParsedCard[],
+): Promise<SyncResult> {
+  const base = serverUrl.replace(/\/+$/, "");
+  const url = `${base}/api/v1/sync`;
+
+  const { status, data } = await requestJson(url, token, {
+    method: "POST",
+    body: JSON.stringify({
+      source_file: sourceFile,
+      deck,
+      cards: cards.map((c) => ({
+        question: c.question,
+        answer: c.answer,
+        source_file: sourceFile,
+      })),
+    }),
+  });
+
+  if (status === 400) {
+    const detail =
+      typeof data === "object" && data && "detail" in data
+        ? String((data as { detail: unknown }).detail)
+        : "Ошибка синхронизации.";
+    throw new SyncError(detail, "validation");
+  }
+  raiseForStatus(status);
 
   if (
     typeof data !== "object" ||

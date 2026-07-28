@@ -1,15 +1,17 @@
 import secrets
 from datetime import date, datetime, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.card import Card
+from app.models.deck import Deck
 from app.models.progress import Progress
 from app.models.review_session import ReviewSession
 from app.models.user import User
+from app.services.deck_service import NO_DECK_LABEL
 from app.services.sm2 import apply_sm2
 
 
@@ -33,13 +35,50 @@ async def deactivate_active_sessions(session: AsyncSession, user_id: int) -> Non
     )
 
 
-async def start_review_session(session: AsyncSession, user: User) -> ReviewSession | None:
+def _deck_filter(deck_id: int | None):
+    if deck_id is None:
+        return Card.deck_id.is_(None)
+    return Card.deck_id == deck_id
+
+
+async def list_reviewable_decks(session: AsyncSession, user: User) -> list[tuple[int | None, str]]:
+    """Return (deck_id, label) for decks that have due or new cards."""
     today = date.today()
+    result = await session.execute(
+        select(Card.deck_id, Deck.name)
+        .outerjoin(Deck, Deck.id == Card.deck_id)
+        .join(Progress, Progress.card_id == Card.id)
+        .where(
+            Card.user_id == user.id,
+            or_(Progress.next_review <= today, Progress.repetition == 0),
+        )
+        .distinct()
+    )
+    items: list[tuple[int | None, str]] = []
+    seen: set[int | None] = set()
+    for deck_id, deck_name in result.all():
+        if deck_id in seen:
+            continue
+        seen.add(deck_id)
+        label = deck_name if deck_id is not None else NO_DECK_LABEL
+        items.append((deck_id, label))
+    items.sort(key=lambda x: (x[0] is not None, (x[1] or "").casefold()))
+    return items
+
+
+async def start_review_session(
+    session: AsyncSession,
+    user: User,
+    *,
+    deck_id: int | None = None,
+) -> ReviewSession | None:
+    today = date.today()
+    deck_clause = _deck_filter(deck_id)
 
     due_result = await session.execute(
         select(Card.id)
         .join(Progress, Progress.card_id == Card.id)
-        .where(Card.user_id == user.id, Progress.next_review <= today)
+        .where(Card.user_id == user.id, Progress.next_review <= today, deck_clause)
         .order_by(Progress.next_review.asc(), Card.id.asc())
     )
     card_ids = list(due_result.scalars().all())
@@ -48,7 +87,7 @@ async def start_review_session(session: AsyncSession, user: User) -> ReviewSessi
         new_result = await session.execute(
             select(Card.id)
             .join(Progress, Progress.card_id == Card.id)
-            .where(Card.user_id == user.id, Progress.repetition == 0)
+            .where(Card.user_id == user.id, Progress.repetition == 0, deck_clause)
             .order_by(Card.id.asc())
             .limit(settings.max_new_cards_per_session)
         )
@@ -112,9 +151,7 @@ async def rate_current_card(
     if expected_card_id != card_id:
         return False, review_session.reviewed_count
 
-    result = await session.execute(
-        select(Progress).where(Progress.card_id == card_id)
-    )
+    result = await session.execute(select(Progress).where(Progress.card_id == card_id))
     progress = result.scalar_one_or_none()
     if progress is None:
         return False, review_session.reviewed_count
@@ -160,8 +197,6 @@ async def get_stats(session: AsyncSession, user: User) -> dict[str, int | float]
     )
     due = due or 0
 
-    # Cards rated today: progress.updated_at is set on every rating.
-    # Exclude pristine cards created/reset today (still at initial SM-2 values with next_review=today).
     reviewed_today = await session.scalar(
         select(func.count())
         .select_from(Card)
@@ -214,3 +249,35 @@ async def reset_progress(session: AsyncSession, user: User) -> int:
     await deactivate_active_sessions(session, user.id)
     await session.commit()
     return len(rows)
+
+
+async def find_card_by_question(
+    session: AsyncSession, user: User, question: str
+) -> Card | None:
+    cleaned = question.strip()
+    result = await session.execute(
+        select(Card).where(Card.user_id == user.id, Card.question == cleaned)
+    )
+    return result.scalar_one_or_none()
+
+
+async def set_card_deck(
+    session: AsyncSession, user: User, card_id: int, deck_id: int | None
+) -> Card | None:
+    result = await session.execute(
+        select(Card).where(Card.user_id == user.id, Card.id == card_id)
+    )
+    card = result.scalar_one_or_none()
+    if card is None:
+        return None
+    if deck_id is not None:
+        deck_result = await session.execute(
+            select(Deck).where(Deck.user_id == user.id, Deck.id == deck_id)
+        )
+        if deck_result.scalar_one_or_none() is None:
+            raise ValueError("Колода не найдена")
+    card.deck_id = deck_id
+    card.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(card)
+    return card

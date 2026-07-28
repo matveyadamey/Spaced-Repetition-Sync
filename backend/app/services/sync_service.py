@@ -7,17 +7,28 @@ from app.models.card import Card
 from app.models.progress import Progress
 from app.models.user import User
 from app.schemas.sync import SyncCardIn, SyncResponse
+from app.services.deck_service import resolve_deck_id
 
 
 async def sync_cards(
     session: AsyncSession,
     user: User,
+    *,
+    source_file: str,
+    deck: str | None,
     cards: list[SyncCardIn],
 ) -> SyncResponse:
+    """Mirror-sync cards for a single note (source_file), assign all to one deck."""
     added = 0
     updated = 0
     skipped = 0
     errors: list[str] = []
+
+    source_file = source_file.strip()
+    if not source_file:
+        raise ValueError("source_file is required")
+
+    deck_id = await resolve_deck_id(session, user, deck)
 
     seen_questions: set[str] = set()
     unique_cards: list[SyncCardIn] = []
@@ -36,12 +47,19 @@ async def sync_cards(
             SyncCardIn(
                 question=question,
                 answer=answer,
-                source_file=card.source_file,
+                source_file=source_file,
             )
         )
 
+    # All user cards keyed by question (uniqueness is global per user).
     result = await session.execute(select(Card).where(Card.user_id == user.id))
     existing_by_question = {card.question: card for card in result.scalars().all()}
+
+    # Cards currently belonging to this note (for mirror delete).
+    note_result = await session.execute(
+        select(Card).where(Card.user_id == user.id, Card.source_file == source_file)
+    )
+    note_cards = {card.question: card for card in note_result.scalars().all()}
 
     today = date.today()
     now = datetime.now(timezone.utc)
@@ -55,7 +73,8 @@ async def sync_cards(
                 user_id=user.id,
                 question=card_in.question,
                 answer=card_in.answer,
-                source_file=card_in.source_file,
+                source_file=source_file,
+                deck_id=deck_id,
             )
             session.add(new_card)
             await session.flush()
@@ -71,12 +90,13 @@ async def sync_cards(
             added += 1
         else:
             existing.answer = card_in.answer
-            existing.source_file = card_in.source_file
+            existing.source_file = source_file
+            existing.deck_id = deck_id
             existing.updated_at = now
             updated += 1
 
     deleted = 0
-    for question, card in existing_by_question.items():
+    for question, card in note_cards.items():
         if question not in incoming_questions:
             await session.execute(delete(Progress).where(Progress.card_id == card.id))
             await session.delete(card)

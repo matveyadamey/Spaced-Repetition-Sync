@@ -82,43 +82,39 @@ var SyncError = class extends Error {
     this.name = "SyncError";
   }
 };
-async function syncCards(serverUrl, token, cards) {
-  const base = serverUrl.replace(/\/+$/, "");
-  const url = `${base}/api/v1/sync`;
-  let status;
-  let data;
+function authHeaders(token) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  };
+}
+async function requestJson(url, token, options = {}) {
   try {
     const response = await (0, import_obsidian.requestUrl)({
       url,
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        cards: cards.map((c) => ({
-          question: c.question,
-          answer: c.answer,
-          source_file: c.source_file
-        }))
-      }),
+      method: options.method ?? "GET",
+      headers: authHeaders(token),
+      body: options.body,
       throw: false
     });
-    status = response.status;
+    let data;
     try {
       data = response.json;
     } catch {
       data = void 0;
     }
+    return { status: response.status, data };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new SyncError(
       `\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C\u0441\u044F \u043A \u0441\u0435\u0440\u0432\u0435\u0440\u0443.
-\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 URL \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0438 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442-\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435.
+\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442-\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435.
 ${detail}`,
       "network"
     );
   }
+}
+function raiseForStatus(status) {
   if (status === 401) {
     throw new SyncError(
       "\u0422\u043E\u043A\u0435\u043D \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D.\n\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u0435 \u043D\u043E\u0432\u044B\u0439 \u0442\u043E\u043A\u0435\u043D \u0447\u0435\u0440\u0435\u0437 Telegram-\u0431\u043E\u0442\u0430.",
@@ -129,11 +125,66 @@ ${detail}`,
     throw new SyncError("\u041F\u0440\u0435\u0432\u044B\u0448\u0435\u043D \u0440\u0430\u0437\u043C\u0435\u0440 \u0437\u0430\u043F\u0440\u043E\u0441\u0430.", "payload");
   }
   if (status === 422) {
-    throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0435 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.", "validation");
+    throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.", "validation");
+  }
+  if (status === 400) {
+    throw new SyncError("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u043A \u0441\u0435\u0440\u0432\u0435\u0440\u0443.", "validation");
   }
   if (status < 200 || status >= 300) {
     throw new SyncError(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 (HTTP ${status}).`, "server");
   }
+}
+async function fetchDecks(serverUrl, token) {
+  const base = serverUrl.replace(/\/+$/, "");
+  const { status, data } = await requestJson(`${base}/api/v1/decks`, token);
+  raiseForStatus(status);
+  if (typeof data !== "object" || data === null || !("decks" in data) || !Array.isArray(data.decks)) {
+    throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.", "format");
+  }
+  return (data.decks || []).map((d) => ({
+    id: Number(d.id),
+    name: String(d.name)
+  }));
+}
+async function createDeck(serverUrl, token, name) {
+  const base = serverUrl.replace(/\/+$/, "");
+  const { status, data } = await requestJson(`${base}/api/v1/decks`, token, {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+  if (status === 400) {
+    const detail = typeof data === "object" && data && "detail" in data ? String(data.detail) : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043B\u043E\u0434\u0443.";
+    throw new SyncError(detail, "validation");
+  }
+  raiseForStatus(status);
+  if (typeof data !== "object" || data === null || !("id" in data) || !("name" in data)) {
+    throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.", "format");
+  }
+  return {
+    id: Number(data.id),
+    name: String(data.name)
+  };
+}
+async function syncCards(serverUrl, token, sourceFile, deck, cards) {
+  const base = serverUrl.replace(/\/+$/, "");
+  const url = `${base}/api/v1/sync`;
+  const { status, data } = await requestJson(url, token, {
+    method: "POST",
+    body: JSON.stringify({
+      source_file: sourceFile,
+      deck,
+      cards: cards.map((c) => ({
+        question: c.question,
+        answer: c.answer,
+        source_file: sourceFile
+      }))
+    })
+  });
+  if (status === 400) {
+    const detail = typeof data === "object" && data && "detail" in data ? String(data.detail) : "\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438.";
+    throw new SyncError(detail, "validation");
+  }
+  raiseForStatus(status);
   if (typeof data !== "object" || data === null || !("status" in data) || !("added" in data) || !("updated" in data) || !("deleted" in data)) {
     throw new SyncError("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.", "format");
   }
@@ -158,10 +209,32 @@ function formatSyncNotice(result) {
 
 // main.ts
 var SERVER_URL = "https://spaced-repetition-sync-production.up.railway.app";
+var NO_DECK_LABEL = "\u0431\u0435\u0437 \u043A\u043E\u043B\u043E\u0434\u044B";
+var ADD_DECK_LABEL = "+ \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u043B\u043E\u0434\u0443";
 var DEFAULT_SETTINGS = {
   token: "",
   delimiter: "::",
   autoSyncOnStartup: false
+};
+var DeckSuggestModal = class extends import_obsidian2.FuzzySuggestModal {
+  constructor(app, choices, onPick) {
+    super(app);
+    this.choices = choices;
+    this.onPick = onPick;
+    this.setPlaceholder("\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043A\u043E\u043B\u043E\u0434\u0443");
+  }
+  getItems() {
+    return this.choices;
+  }
+  getItemText(item) {
+    if (item.kind === "add") {
+      return ADD_DECK_LABEL;
+    }
+    return item.name ?? NO_DECK_LABEL;
+  }
+  onChooseItem(item) {
+    this.onPick(item);
+  }
 };
 var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
   constructor() {
@@ -184,21 +257,84 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
       });
     }
   }
+  async chooseDeck(decks) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      };
+      const choices = [
+        { kind: "deck", name: null },
+        ...decks.map((d) => ({ kind: "deck", name: d.name })),
+        { kind: "add" }
+      ];
+      const modal = new DeckSuggestModal(this.app, choices, (choice) => {
+        if (choice.kind === "add") {
+          finish("add");
+          return;
+        }
+        finish(choice.name);
+      });
+      const prevClose = modal.onClose.bind(modal);
+      modal.onClose = () => {
+        prevClose();
+        finish("cancelled");
+      };
+      modal.open();
+    });
+  }
+  async askDeckName() {
+    const name = window.prompt("\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043D\u043E\u0432\u043E\u0439 \u043A\u043E\u043B\u043E\u0434\u044B:");
+    if (name === null) {
+      return null;
+    }
+    const cleaned = name.trim();
+    return cleaned || null;
+  }
   async runSync(fromStartup = false) {
     if (!this.settings.token.trim()) {
       new import_obsidian2.Notice("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.");
       return;
     }
-    try {
-      const files = this.app.vault.getMarkdownFiles();
-      const allCards = [];
-      for (const file of files) {
-        const content = await this.app.vault.read(file);
-        const cards = parseCards(content, this.settings.delimiter, file.path);
-        allCards.push(...cards);
+    const active = this.app.workspace.getActiveFile();
+    if (!(active instanceof import_obsidian2.TFile) || active.extension !== "md") {
+      if (!fromStartup) {
+        new import_obsidian2.Notice("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 Markdown-\u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0434\u043B\u044F \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438.");
       }
-      const unique = dedupeByQuestion(allCards);
-      const result = await syncCards(SERVER_URL, this.settings.token.trim(), unique);
+      return;
+    }
+    try {
+      const token = this.settings.token.trim();
+      let decks = await fetchDecks(SERVER_URL, token);
+      let deckName = null;
+      while (true) {
+        const choice = await this.chooseDeck(decks);
+        if (choice === "cancelled") {
+          return;
+        }
+        if (choice === "add") {
+          const newName = await this.askDeckName();
+          if (!newName) {
+            continue;
+          }
+          const created = await createDeck(SERVER_URL, token, newName);
+          new import_obsidian2.Notice(`\u041A\u043E\u043B\u043E\u0434\u0430 \u0441\u043E\u0437\u0434\u0430\u043D\u0430: ${created.name}`);
+          decks = await fetchDecks(SERVER_URL, token);
+          deckName = created.name;
+          break;
+        }
+        deckName = choice;
+        break;
+      }
+      const content = await this.app.vault.read(active);
+      const cards = dedupeByQuestion(
+        parseCards(content, this.settings.delimiter, active.path)
+      );
+      const result = await syncCards(SERVER_URL, token, active.path, deckName, cards);
       new import_obsidian2.Notice(formatSyncNotice(result), 8e3);
     } catch (error) {
       if (error instanceof SyncError) {
@@ -239,7 +375,7 @@ var SpacedRepetitionSettingTab = class extends import_obsidian2.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Automatic synchronization on startup").setDesc("\u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 Obsidian").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Automatic synchronization on startup").setDesc("\u0410\u0432\u0442\u043E\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 Obsidian").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoSyncOnStartup).onChange(async (value) => {
         this.plugin.settings.autoSyncOnStartup = value;
         await this.plugin.saveSettings();
