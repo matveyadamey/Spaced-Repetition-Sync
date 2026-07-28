@@ -18,6 +18,7 @@ class User(Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     cards = relationship("Card", back_populates="user", cascade="all, delete-orphan")
+    decks = relationship("Deck", back_populates="user", cascade="all, delete-orphan")
     review_sessions = relationship(
         "ReviewSession", back_populates="user", cascade="all, delete-orphan"
     )

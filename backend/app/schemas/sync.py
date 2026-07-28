@@ -8,6 +8,8 @@ class SyncCardIn(BaseModel):
 
 
 class SyncRequest(BaseModel):
+    source_file: str = Field(..., min_length=1, max_length=1000)
+    deck: str | None = Field(default=None, max_length=200)
     cards: list[SyncCardIn] = Field(..., max_length=10000)
 
 
