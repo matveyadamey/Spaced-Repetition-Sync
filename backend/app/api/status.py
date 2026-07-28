@@ -27,5 +27,4 @@ async def status_endpoint(
         user_id=user.id,
         cards_count=cards_count or 0,
         last_sync_at=user.last_sync_at,
-        delimiter=user.delimiter,
     )

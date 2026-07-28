@@ -45,8 +45,8 @@ async def test_status_endpoint(client, user_with_token):
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == user.id
-    assert data["delimiter"] == "::"
     assert data["cards_count"] == 0
+    assert "delimiter" not in data
 
 
 @pytest.mark.asyncio

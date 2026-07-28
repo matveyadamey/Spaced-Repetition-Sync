@@ -58,7 +58,7 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def user_with_token(session: AsyncSession) -> tuple[User, str]:
     token = generate_token()
-    user = User(telegram_id=1001, token_hash=hash_token(token), delimiter="::")
+    user = User(telegram_id=1001, token_hash=hash_token(token))
     session.add(user)
     await session.commit()
     await session.refresh(user)
@@ -68,7 +68,7 @@ async def user_with_token(session: AsyncSession) -> tuple[User, str]:
 @pytest_asyncio.fixture
 async def another_user_with_token(session: AsyncSession) -> tuple[User, str]:
     token = generate_token()
-    user = User(telegram_id=1002, token_hash=hash_token(token), delimiter="::")
+    user = User(telegram_id=1002, token_hash=hash_token(token))
     session.add(user)
     await session.commit()
     await session.refresh(user)
