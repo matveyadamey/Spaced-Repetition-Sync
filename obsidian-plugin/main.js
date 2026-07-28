@@ -210,30 +210,54 @@ function formatSyncNotice(result) {
 // main.ts
 var SERVER_URL = "https://spaced-repetition-sync-production.up.railway.app";
 var NO_DECK_LABEL = "\u0431\u0435\u0437 \u043A\u043E\u043B\u043E\u0434\u044B";
-var ADD_DECK_LABEL = "+ \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u043B\u043E\u0434\u0443";
 var DEFAULT_SETTINGS = {
   token: "",
   delimiter: "::",
   autoSyncOnStartup: false
 };
-var DeckSuggestModal = class extends import_obsidian2.FuzzySuggestModal {
-  constructor(app, choices, onPick) {
+var DeckSelectModal = class extends import_obsidian2.Modal {
+  constructor(app, decks, onResult) {
     super(app);
-    this.choices = choices;
-    this.onPick = onPick;
-    this.setPlaceholder("\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043A\u043E\u043B\u043E\u0434\u0443");
+    this.decks = decks;
+    this.onResult = onResult;
+    this.settled = false;
   }
-  getItems() {
-    return this.choices;
-  }
-  getItemText(item) {
-    if (item.kind === "add") {
-      return ADD_DECK_LABEL;
+  finish(result) {
+    if (this.settled) {
+      return;
     }
-    return item.name ?? NO_DECK_LABEL;
+    this.settled = true;
+    this.close();
+    this.onResult(result);
   }
-  onChooseItem(item) {
-    this.onPick(item);
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043A\u043E\u043B\u043E\u0434\u0443" });
+    contentEl.createEl("p", {
+      text: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0438\u0437 \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u0431\u0443\u0434\u0443\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B \u0432 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u0443\u044E \u043A\u043E\u043B\u043E\u0434\u0443."
+    });
+    const list = contentEl.createDiv({ cls: "spaced-rep-deck-list" });
+    const addButton = (label, result) => {
+      const btn = list.createEl("button", { text: label });
+      btn.style.display = "block";
+      btn.style.width = "100%";
+      btn.style.marginBottom = "8px";
+      btn.addEventListener("click", () => this.finish(result));
+    };
+    addButton(NO_DECK_LABEL, null);
+    for (const deck of this.decks) {
+      addButton(deck.name, deck.name);
+    }
+    addButton("+ \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u043B\u043E\u0434\u0443", "add");
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+    if (!this.settled) {
+      this.settled = true;
+      this.onResult("cancelled");
+    }
   }
 };
 var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
@@ -257,33 +281,9 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
       });
     }
   }
-  async chooseDeck(decks) {
+  chooseDeck(decks) {
     return new Promise((resolve) => {
-      let settled = false;
-      const finish = (value) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      };
-      const choices = [
-        { kind: "deck", name: null },
-        ...decks.map((d) => ({ kind: "deck", name: d.name })),
-        { kind: "add" }
-      ];
-      const modal = new DeckSuggestModal(this.app, choices, (choice) => {
-        if (choice.kind === "add") {
-          finish("add");
-          return;
-        }
-        finish(choice.name);
-      });
-      const prevClose = modal.onClose.bind(modal);
-      modal.onClose = () => {
-        prevClose();
-        finish("cancelled");
-      };
+      const modal = new DeckSelectModal(this.app, decks, resolve);
       modal.open();
     });
   }
@@ -309,11 +309,13 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
     }
     try {
       const token = this.settings.token.trim();
+      new import_obsidian2.Notice("\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u043A\u043E\u043B\u043E\u0434\u2026");
       let decks = await fetchDecks(SERVER_URL, token);
       let deckName = null;
       while (true) {
         const choice = await this.chooseDeck(decks);
         if (choice === "cancelled") {
+          new import_obsidian2.Notice("\u0421\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u0430.");
           return;
         }
         if (choice === "add") {
@@ -334,17 +336,18 @@ var SpacedRepetitionPlugin = class extends import_obsidian2.Plugin {
       const cards = dedupeByQuestion(
         parseCards(content, this.settings.delimiter, active.path)
       );
+      const deckLabel = deckName ?? NO_DECK_LABEL;
+      new import_obsidian2.Notice(`\u041E\u0442\u043F\u0440\u0430\u0432\u043A\u0430 ${cards.length} \u043A\u0430\u0440\u0442\u043E\u0447\u0435\u043A \u0432 \xAB${deckLabel}\xBB\u2026`);
       const result = await syncCards(SERVER_URL, token, active.path, deckName, cards);
-      new import_obsidian2.Notice(formatSyncNotice(result), 8e3);
+      new import_obsidian2.Notice(formatSyncNotice(result), 1e4);
     } catch (error) {
       if (error instanceof SyncError) {
-        new import_obsidian2.Notice(error.message, 8e3);
+        new import_obsidian2.Notice(error.message, 1e4);
       } else {
-        new import_obsidian2.Notice("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438.", 8e3);
+        const detail = error instanceof Error ? error.message : String(error);
+        new import_obsidian2.Notice(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438: ${detail}`, 1e4);
       }
-      if (!fromStartup) {
-        console.error(error);
-      }
+      console.error(error);
     }
   }
   async loadSettings() {

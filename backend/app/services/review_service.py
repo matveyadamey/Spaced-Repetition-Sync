@@ -42,26 +42,57 @@ def _deck_filter(deck_id: int | None):
 
 
 async def list_reviewable_decks(session: AsyncSession, user: User) -> list[tuple[int | None, str]]:
-    """Return (deck_id, label) for decks that have due or new cards."""
+    """Return decks for /review picker: все колоды пользователя + «без колоды», если там есть карточки."""
     today = date.today()
-    result = await session.execute(
+
+    # Named decks that have due or new cards.
+    named_ready = await session.execute(
         select(Card.deck_id, Deck.name)
-        .outerjoin(Deck, Deck.id == Card.deck_id)
+        .join(Deck, Deck.id == Card.deck_id)
         .join(Progress, Progress.card_id == Card.id)
         .where(
             Card.user_id == user.id,
+            Card.deck_id.is_not(None),
             or_(Progress.next_review <= today, Progress.repetition == 0),
         )
         .distinct()
     )
     items: list[tuple[int | None, str]] = []
     seen: set[int | None] = set()
-    for deck_id, deck_name in result.all():
+    for deck_id, deck_name in named_ready.all():
         if deck_id in seen:
             continue
         seen.add(deck_id)
-        label = deck_name if deck_id is not None else NO_DECK_LABEL
-        items.append((deck_id, label))
+        items.append((deck_id, deck_name))
+
+    # Also include every named deck that has at least one card (even if not due yet),
+    # so a deck with cards always appears after sync.
+    named_with_cards = await session.execute(
+        select(Card.deck_id, Deck.name)
+        .join(Deck, Deck.id == Card.deck_id)
+        .where(Card.user_id == user.id, Card.deck_id.is_not(None))
+        .distinct()
+    )
+    for deck_id, deck_name in named_with_cards.all():
+        if deck_id in seen:
+            continue
+        seen.add(deck_id)
+        items.append((deck_id, deck_name))
+
+    # «без колоды» — если есть due/new карточки без колоды
+    no_deck_ready = await session.scalar(
+        select(func.count())
+        .select_from(Card)
+        .join(Progress, Progress.card_id == Card.id)
+        .where(
+            Card.user_id == user.id,
+            Card.deck_id.is_(None),
+            or_(Progress.next_review <= today, Progress.repetition == 0),
+        )
+    )
+    if no_deck_ready:
+        items.append((None, NO_DECK_LABEL))
+
     items.sort(key=lambda x: (x[0] is not None, (x[1] or "").casefold()))
     return items
 

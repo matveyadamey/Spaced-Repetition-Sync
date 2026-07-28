@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 
 import { dedupeByQuestion, parseCards } from "./src/parser";
 import {
@@ -12,7 +12,6 @@ import {
 
 const SERVER_URL = "https://spaced-repetition-sync-production.up.railway.app";
 const NO_DECK_LABEL = "без колоды";
-const ADD_DECK_LABEL = "+ Добавить колоду";
 
 interface SpacedRepetitionSettings {
   token: string;
@@ -26,31 +25,61 @@ const DEFAULT_SETTINGS: SpacedRepetitionSettings = {
   autoSyncOnStartup: false,
 };
 
-type DeckChoice = { kind: "deck"; name: string | null } | { kind: "add" };
+type DeckPickResult = "cancelled" | "add" | string | null;
 
-class DeckSuggestModal extends FuzzySuggestModal<DeckChoice> {
+class DeckSelectModal extends Modal {
+  private settled = false;
+
   constructor(
     app: App,
-    private readonly choices: DeckChoice[],
-    private readonly onPick: (choice: DeckChoice) => void,
+    private readonly decks: DeckInfo[],
+    private readonly onResult: (result: DeckPickResult) => void,
   ) {
     super(app);
-    this.setPlaceholder("Выберите колоду");
   }
 
-  getItems(): DeckChoice[] {
-    return this.choices;
-  }
-
-  getItemText(item: DeckChoice): string {
-    if (item.kind === "add") {
-      return ADD_DECK_LABEL;
+  private finish(result: DeckPickResult) {
+    if (this.settled) {
+      return;
     }
-    return item.name ?? NO_DECK_LABEL;
+    this.settled = true;
+    this.close();
+    this.onResult(result);
   }
 
-  onChooseItem(item: DeckChoice): void {
-    this.onPick(item);
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Выберите колоду" });
+    contentEl.createEl("p", {
+      text: "Карточки из открытой заметки будут сохранены в выбранную колоду.",
+    });
+
+    const list = contentEl.createDiv({ cls: "spaced-rep-deck-list" });
+
+    const addButton = (label: string, result: DeckPickResult) => {
+      const btn = list.createEl("button", { text: label });
+      btn.style.display = "block";
+      btn.style.width = "100%";
+      btn.style.marginBottom = "8px";
+      btn.addEventListener("click", () => this.finish(result));
+    };
+
+    addButton(NO_DECK_LABEL, null);
+    for (const deck of this.decks) {
+      addButton(deck.name, deck.name);
+    }
+    addButton("+ Добавить колоду", "add");
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+    // Esc / click outside without choosing
+    if (!this.settled) {
+      this.settled = true;
+      this.onResult("cancelled");
+    }
   }
 }
 
@@ -77,35 +106,9 @@ export default class SpacedRepetitionPlugin extends Plugin {
     }
   }
 
-  async chooseDeck(decks: DeckInfo[]): Promise<"cancelled" | "add" | string | null> {
+  chooseDeck(decks: DeckInfo[]): Promise<DeckPickResult> {
     return new Promise((resolve) => {
-      let settled = false;
-      const finish = (value: "cancelled" | "add" | string | null) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      };
-
-      const choices: DeckChoice[] = [
-        { kind: "deck", name: null },
-        ...decks.map((d) => ({ kind: "deck" as const, name: d.name })),
-        { kind: "add" },
-      ];
-
-      const modal = new DeckSuggestModal(this.app, choices, (choice) => {
-        if (choice.kind === "add") {
-          finish("add");
-          return;
-        }
-        finish(choice.name);
-      });
-      const prevClose = modal.onClose.bind(modal);
-      modal.onClose = () => {
-        prevClose();
-        finish("cancelled");
-      };
+      const modal = new DeckSelectModal(this.app, decks, resolve);
       modal.open();
     });
   }
@@ -135,12 +138,14 @@ export default class SpacedRepetitionPlugin extends Plugin {
 
     try {
       const token = this.settings.token.trim();
+      new Notice("Загрузка списка колод…");
       let decks = await fetchDecks(SERVER_URL, token);
 
       let deckName: string | null = null;
       while (true) {
         const choice = await this.chooseDeck(decks);
         if (choice === "cancelled") {
+          new Notice("Синхронизация отменена.");
           return;
         }
         if (choice === "add") {
@@ -163,17 +168,19 @@ export default class SpacedRepetitionPlugin extends Plugin {
         parseCards(content, this.settings.delimiter, active.path),
       );
 
+      const deckLabel = deckName ?? NO_DECK_LABEL;
+      new Notice(`Отправка ${cards.length} карточек в «${deckLabel}»…`);
+
       const result = await syncCards(SERVER_URL, token, active.path, deckName, cards);
-      new Notice(formatSyncNotice(result), 8000);
+      new Notice(formatSyncNotice(result), 10000);
     } catch (error) {
       if (error instanceof SyncError) {
-        new Notice(error.message, 8000);
+        new Notice(error.message, 10000);
       } else {
-        new Notice("Неизвестная ошибка синхронизации.", 8000);
+        const detail = error instanceof Error ? error.message : String(error);
+        new Notice(`Ошибка синхронизации: ${detail}`, 10000);
       }
-      if (!fromStartup) {
-        console.error(error);
-      }
+      console.error(error);
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "id": "spaced-repetition-sync",
   "name": "Spaced Repetition Sync",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minAppVersion": "1.5.0",
   "description": "Sync question-answer cards from Obsidian to the spaced repetition server.",
   "author": "matveyadamey",
