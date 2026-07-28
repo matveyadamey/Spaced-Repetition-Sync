@@ -206,10 +206,7 @@ async def cmd_review(message: Message) -> None:
             "Нет карточек для повторения. Синхронизируйте карточки из Obsidian."
         )
         return
-    if len(decks) == 1:
-        await _start_deck_review(message, message.from_user.id, decks[0][0])
-        return
-    logger.info("Command /review telegram_id=%s pick_deck", message.from_user.id)
+    logger.info("Command /review telegram_id=%s pick_deck count=%s", message.from_user.id, len(decks))
     await message.answer(
         "Выберите колоду для повторения:",
         reply_markup=review_deck_keyboard(decks),
