@@ -81,6 +81,7 @@ pytest -v
 | `app/services/sm2.py` | Алгоритм SM-2 |
 | `app/services/sync_service.py` | Зеркальная синхронизация в одной транзакции |
 | `app/services/review_service.py` | Сессии `/review`, статистика, reset |
+| `app/services/export_service.py` | Экспорт колоды в Markdown (`/export_deck`) |
 | `app/services/token_service.py` | Генерация и хеширование токенов |
 | `app/bot/handlers.py` | Команды и callback-кнопки |
 | `app/api/sync.py` | `POST /api/v1/sync` |

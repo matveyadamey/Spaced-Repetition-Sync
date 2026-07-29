@@ -2,7 +2,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from app.bot.keyboards import (
     edit_card_deck_keyboard,
@@ -16,6 +16,7 @@ from app.database import AsyncSessionLocal
 from app.models.deck import Deck
 from app.services import deck_service
 from app.services.deck_service import NO_DECK_LABEL
+from app.services.export_service import DEFAULT_DELIMITER, export_deck_markdown
 from app.services.review_service import (
     find_card_by_question,
     get_active_session,
@@ -72,6 +73,7 @@ async def cmd_start(message: Message) -> None:
         "/add_deck название — создать колоду\n"
         "/delete_deck название — удалить колоду\n"
         "/edit_card_deck вопрос — сменить колоду карточки\n"
+        "/export_deck название — экспорт колоды в Markdown\n"
         "/stats — статистика\n"
         "/reset — сброс прогресса\n\n"
         f"Инструкция:\n{settings.plugin_install_url}"
@@ -132,6 +134,39 @@ async def cmd_delete_deck(message: Message, command: CommandObject) -> None:
     logger.info("Command /delete_deck telegram_id=%s", message.from_user.id)
     await message.answer(
         f"Колода удалена. Карточки из неё теперь в «{NO_DECK_LABEL}»."
+    )
+
+
+@router.message(Command("export_deck"))
+async def cmd_export_deck(message: Message, command: CommandObject) -> None:
+    if message.from_user is None:
+        return
+    name = (command.args or "").strip()
+    if not name:
+        await message.answer(
+            "Укажите название колоды.\nПример: /export_deck Матан"
+        )
+        return
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(session, message.from_user.id)
+        try:
+            filename, markdown, count = await export_deck_markdown(session, user, name)
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
+    if count == 0:
+        await message.answer("В этой колоде нет карточек.")
+        return
+    document = BufferedInputFile(markdown.encode("utf-8"), filename=filename)
+    logger.info(
+        "Command /export_deck telegram_id=%s cards=%s file=%s",
+        message.from_user.id,
+        count,
+        filename,
+    )
+    await message.answer_document(
+        document,
+        caption=f"Экспорт: {count} карт. Разделитель: `{DEFAULT_DELIMITER}`",
     )
 
 
