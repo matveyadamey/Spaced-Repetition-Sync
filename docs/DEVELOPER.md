@@ -64,15 +64,32 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```bash
 cd backend
 pytest -v
+ruff check app tests
+```
+
+Плагин:
+
+```bash
+cd obsidian-plugin
+npm test
+npm run typecheck
 ```
 
 Покрыто:
 
 - SM-2;
-- токены (генерация / SHA-256);
-- sync add / update / delete / empty;
+- токены (генерация / SHA-256 / ротация);
+- sync add / update / delete / empty / missing deck;
+- колоды (`deck_service` + `GET/POST /api/v1/decks`);
+- review (сессия, оценка, due vs new, stats, reset, смена колоды);
+- экспорт колоды в Markdown;
 - изоляция пользователей;
-- API-аутентификация.
+- API-аутентификация;
+- парсер карточек плагина (Vitest).
+
+Не покрыто намеренно (тонкий I/O): обработчики aiogram целиком — логика в сервисах.
+
+CI (`.github/workflows/ci.yml`) на push/PR в `main`: pytest + ruff, typecheck + vitest плагина.
 
 ### Ключевые модули
 
