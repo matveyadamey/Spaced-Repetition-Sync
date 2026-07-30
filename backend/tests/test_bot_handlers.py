@@ -394,15 +394,15 @@ async def test_on_review_callback_rate_paths(session, monkeypatch, user_with_tok
     next_card = make_callback(f"review:{review.session_id}:{first.id}:rate:5")
     await handlers.on_review_callback(next_card)
     next_card.answer.assert_awaited_once_with()
-    next_card.message.answer.assert_awaited_once()
-    sent_question = next_card.message.answer.await_args.args[0]
+
+    next_card.message.edit_text.assert_awaited()
+    sent_question = next_card.message.edit_text.await_args.args[0]
     assert sent_question == "Second?"
 
     finish = make_callback(
         f"review:{review.session_id}:{second.id}:rate:5", message=next_card.message
     )
     await handlers.on_review_callback(finish)
-    # В новом коде при finished=True вызывается edit_text, а не edit_reply_markup + answer
     finish.message.edit_text.assert_awaited()
     assert "Сессия завершена" in finish.message.edit_text.await_args.args[0]
 
