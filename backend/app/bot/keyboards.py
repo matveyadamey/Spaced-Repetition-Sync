@@ -52,15 +52,11 @@ def review_deck_keyboard(decks: list[tuple[int | None, str]]) -> InlineKeyboardM
     rows: list[list[InlineKeyboardButton]] = []
     for deck_id, label in decks:
         token = "0" if deck_id is None else str(deck_id)
-        rows.append(
-            [InlineKeyboardButton(text=label, callback_data=f"revdeck:{token}")]
-        )
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"revdeck:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def edit_card_deck_keyboard(
-    card_id: int, decks: list[tuple[int, str]]
-) -> InlineKeyboardMarkup:
+def edit_card_deck_keyboard(card_id: int, decks: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(text=NO_DECK_LABEL, callback_data=f"setdeck:{card_id}:0")]
     ]

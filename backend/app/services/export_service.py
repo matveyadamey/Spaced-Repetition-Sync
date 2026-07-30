@@ -13,12 +13,7 @@ def format_card(question: str, answer: str, delimiter: str = DEFAULT_DELIMITER) 
     """Format one card in Obsidian-compatible markdown."""
     q = question.strip()
     a = answer.strip()
-    needs_multiline = (
-        "\n" in q
-        or "\n" in a
-        or delimiter in q
-        or delimiter in a
-    )
+    needs_multiline = "\n" in q or "\n" in a or delimiter in q or delimiter in a
     if needs_multiline:
         return f"{q}\n{delimiter}\n{a}"
     return f"{q} {delimiter} {a}"
@@ -35,9 +30,7 @@ def safe_filename(name: str) -> str:
     return f"{cleaned}.md"
 
 
-async def list_deck_cards(
-    session: AsyncSession, user: User, deck_id: int | None
-) -> list[Card]:
+async def list_deck_cards(session: AsyncSession, user: User, deck_id: int | None) -> list[Card]:
     stmt = select(Card).where(Card.user_id == user.id)
     if deck_id is None:
         stmt = stmt.where(Card.deck_id.is_(None))
@@ -61,9 +54,7 @@ async def export_deck_markdown(
     if not cleaned:
         raise ValueError("Укажите название колоды.\nПример: /export_deck Матан")
 
-    if deck_service.normalize_deck_name(cleaned) == deck_service.normalize_deck_name(
-        NO_DECK_LABEL
-    ):
+    if deck_service.normalize_deck_name(cleaned) == deck_service.normalize_deck_name(NO_DECK_LABEL):
         cards = await list_deck_cards(session, user, None)
         filename = safe_filename(NO_DECK_LABEL)
     else:

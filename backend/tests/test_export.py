@@ -29,7 +29,7 @@ def test_format_card_multiline_when_delimiter_in_text():
 
 def test_safe_filename():
     assert safe_filename("Матан") == "Матан.md"
-    assert safe_filename('a/b:c') == "a_b_c.md"
+    assert safe_filename("a/b:c") == "a_b_c.md"
 
 
 @pytest.mark.asyncio

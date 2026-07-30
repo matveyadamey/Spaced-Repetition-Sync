@@ -29,9 +29,7 @@ async def get_deck_by_name(session: AsyncSession, user: User, name: str) -> Deck
 
 
 async def get_deck_by_id(session: AsyncSession, user: User, deck_id: int) -> Deck | None:
-    result = await session.execute(
-        select(Deck).where(Deck.user_id == user.id, Deck.id == deck_id)
-    )
+    result = await session.execute(select(Deck).where(Deck.user_id == user.id, Deck.id == deck_id))
     return result.scalar_one_or_none()
 
 
@@ -40,7 +38,7 @@ async def create_deck(session: AsyncSession, user: User, name: str) -> Deck:
     if not cleaned:
         raise ValueError("Название колоды не может быть пустым")
     if normalize_deck_name(cleaned) == normalize_deck_name(NO_DECK_LABEL):
-        raise ValueError(f'Нельзя создать колоду с именем «{NO_DECK_LABEL}»')
+        raise ValueError(f"Нельзя создать колоду с именем «{NO_DECK_LABEL}»")
     existing = await get_deck_by_name(session, user, cleaned)
     if existing is not None:
         raise ValueError("Колода с таким названием уже существует")
@@ -65,9 +63,7 @@ async def delete_deck(session: AsyncSession, user: User, name: str) -> int:
     return 1
 
 
-async def resolve_deck_id(
-    session: AsyncSession, user: User, deck_name: str | None
-) -> int | None:
+async def resolve_deck_id(session: AsyncSession, user: User, deck_name: str | None) -> int | None:
     """Return deck_id or None for без колоды. Raises ValueError if named deck missing."""
     if deck_name is None:
         return None
@@ -76,5 +72,5 @@ async def resolve_deck_id(
         return None
     deck = await get_deck_by_name(session, user, cleaned)
     if deck is None:
-        raise ValueError(f'Колода «{cleaned}» не найдена. Создайте её через /add_deck или плагин.')
+        raise ValueError(f"Колода «{cleaned}» не найдена. Создайте её через /add_deck или плагин.")
     return deck.id

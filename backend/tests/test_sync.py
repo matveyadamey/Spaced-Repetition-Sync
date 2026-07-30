@@ -72,7 +72,9 @@ async def test_sync_note_scoped_delete_and_deck_change(session, user_with_token)
 
     cards = {
         c.question: c
-        for c in (await session.execute(select(Card).where(Card.user_id == user.id))).scalars().all()
+        for c in (await session.execute(select(Card).where(Card.user_id == user.id)))
+        .scalars()
+        .all()
     }
     assert set(cards) == {"Q1?", "Other?"}
     assert cards["Q1?"].deck_id is None
@@ -186,6 +188,6 @@ async def test_user_isolation(session, user_with_token, another_user_with_token)
 
     await sync_cards(session, user_a, source_file="a.md", deck=None, cards=[])
     cards_b_after = (
-        await session.execute(select(Card).where(Card.user_id == user_b.id))
-    ).scalars().all()
+        (await session.execute(select(Card).where(Card.user_id == user_b.id))).scalars().all()
+    )
     assert len(cards_b_after) == 1

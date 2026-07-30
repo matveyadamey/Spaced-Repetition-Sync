@@ -161,9 +161,7 @@ async def get_active_session(
     return result.scalar_one_or_none()
 
 
-async def get_current_card(
-    session: AsyncSession, review_session: ReviewSession
-) -> Card | None:
+async def get_current_card(session: AsyncSession, review_session: ReviewSession) -> Card | None:
     if review_session.current_index >= len(review_session.card_ids):
         return None
     card_id = review_session.card_ids[review_session.current_index]
@@ -271,9 +269,7 @@ async def reset_progress(session: AsyncSession, user: User) -> int:
     today = date.today()
     now = datetime.now(UTC)
     result = await session.execute(
-        select(Progress)
-        .join(Card, Card.id == Progress.card_id)
-        .where(Card.user_id == user.id)
+        select(Progress).join(Card, Card.id == Progress.card_id).where(Card.user_id == user.id)
     )
     rows = list(result.scalars().all())
     for progress in rows:
@@ -287,9 +283,7 @@ async def reset_progress(session: AsyncSession, user: User) -> int:
     return len(rows)
 
 
-async def find_card_by_question(
-    session: AsyncSession, user: User, question: str
-) -> Card | None:
+async def find_card_by_question(session: AsyncSession, user: User, question: str) -> Card | None:
     cleaned = question.strip()
     result = await session.execute(
         select(Card).where(Card.user_id == user.id, Card.question == cleaned)
@@ -300,9 +294,7 @@ async def find_card_by_question(
 async def set_card_deck(
     session: AsyncSession, user: User, card_id: int, deck_id: int | None
 ) -> Card | None:
-    result = await session.execute(
-        select(Card).where(Card.user_id == user.id, Card.id == card_id)
-    )
+    result = await session.execute(select(Card).where(Card.user_id == user.id, Card.id == card_id))
     card = result.scalar_one_or_none()
     if card is None:
         return None

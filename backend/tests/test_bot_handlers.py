@@ -52,7 +52,9 @@ def make_command(args: str | None):
     return SimpleNamespace(args=args)
 
 
-async def seed_cards(session, user: User, *, deck: str | None, source_file: str, questions: list[str]):
+async def seed_cards(
+    session, user: User, *, deck: str | None, source_file: str, questions: list[str]
+):
     await sync_cards(
         session,
         user,
@@ -299,8 +301,10 @@ async def test_on_review_callback_rate_paths(session, monkeypatch, user_with_tok
     await seed_cards(session, user, deck=None, source_file="a.md", questions=["First?", "Second?"])
     review = await handlers.start_review_session(session, user, deck_id=None)
     first, second = (
-        await session.execute(select(Card).where(Card.user_id == user.id).order_by(Card.id.asc()))
-    ).scalars().all()
+        (await session.execute(select(Card).where(Card.user_id == user.id).order_by(Card.id.asc())))
+        .scalars()
+        .all()
+    )
 
     next_card = make_callback(f"review:{review.session_id}:{first.id}:rate:5")
     await handlers.on_review_callback(next_card)
@@ -309,7 +313,9 @@ async def test_on_review_callback_rate_paths(session, monkeypatch, user_with_tok
     sent_question = next_card.message.answer.await_args.args[0]
     assert sent_question == "Second?"
 
-    finish = make_callback(f"review:{review.session_id}:{second.id}:rate:5", message=next_card.message)
+    finish = make_callback(
+        f"review:{review.session_id}:{second.id}:rate:5", message=next_card.message
+    )
     await handlers.on_review_callback(finish)
     finish.message.edit_reply_markup.assert_awaited_with(reply_markup=None)
     assert "Сессия завершена" in finish.message.answer.await_args.args[0]
@@ -339,7 +345,9 @@ async def test_on_reset_callback_branches(session, monkeypatch, user_with_token)
     user, _ = user_with_token
     await seed_cards(session, user, deck=None, source_file="a.md", questions=["Q?"])
     card = (await session.execute(select(Card).where(Card.user_id == user.id))).scalar_one()
-    progress = (await session.execute(select(Progress).where(Progress.card_id == card.id))).scalar_one()
+    progress = (
+        await session.execute(select(Progress).where(Progress.card_id == card.id))
+    ).scalar_one()
     progress.repetition = 2
     await session.commit()
 
@@ -372,7 +380,9 @@ async def test_on_set_deck_callback_ignores_missing_context():
 
 
 @pytest.mark.asyncio
-async def test_start_deck_review_handles_empty_and_sends_question(session, monkeypatch, user_with_token):
+async def test_start_deck_review_handles_empty_and_sends_question(
+    session, monkeypatch, user_with_token
+):
     patch_session(monkeypatch, session)
     user, _ = user_with_token
     await create_deck(session, user, "Матан")

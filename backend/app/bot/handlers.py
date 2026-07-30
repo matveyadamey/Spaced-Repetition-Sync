@@ -92,8 +92,7 @@ async def cmd_token(message: Message) -> None:
         await session.commit()
     logger.info("Command /token for telegram_id=%s", message.from_user.id)
     await message.answer(
-        f"Ваш токен:\n{token}\n\n"
-        "Сохраните его. Повторно показать этот токен невозможно."
+        f"Ваш токен:\n{token}\n\nСохраните его. Повторно показать этот токен невозможно."
     )
 
 
@@ -132,9 +131,7 @@ async def cmd_delete_deck(message: Message, command: CommandObject) -> None:
             await message.answer(str(exc))
             return
     logger.info("Command /delete_deck telegram_id=%s", message.from_user.id)
-    await message.answer(
-        f"Колода удалена. Карточки из неё теперь в «{NO_DECK_LABEL}»."
-    )
+    await message.answer(f"Колода удалена. Карточки из неё теперь в «{NO_DECK_LABEL}».")
 
 
 @router.message(Command("export_deck"))
@@ -143,9 +140,7 @@ async def cmd_export_deck(message: Message, command: CommandObject) -> None:
         return
     name = (command.args or "").strip()
     if not name:
-        await message.answer(
-            "Укажите название колоды.\nПример: /export_deck Матан"
-        )
+        await message.answer("Укажите название колоды.\nПример: /export_deck Матан")
         return
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, message.from_user.id)
@@ -176,9 +171,7 @@ async def cmd_edit_card_deck(message: Message, command: CommandObject) -> None:
         return
     question = (command.args or "").strip()
     if not question:
-        await message.answer(
-            "Укажите вопрос карточки.\nПример: /edit_card_deck Что такое Python?"
-        )
+        await message.answer("Укажите вопрос карточки.\nПример: /edit_card_deck Что такое Python?")
         return
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, message.from_user.id)
@@ -187,9 +180,7 @@ async def cmd_edit_card_deck(message: Message, command: CommandObject) -> None:
             await message.answer("Карточка с таким вопросом не найдена.")
             return
         decks = await deck_service.list_decks(session, user)
-        keyboard = edit_card_deck_keyboard(
-            card.id, [(d.id, d.name) for d in decks]
-        )
+        keyboard = edit_card_deck_keyboard(card.id, [(d.id, d.name) for d in decks])
     await message.answer(
         f"Выберите колоду для карточки:\n{question}",
         reply_markup=keyboard,
@@ -237,11 +228,11 @@ async def cmd_review(message: Message) -> None:
         user = await get_or_create_user(session, message.from_user.id)
         decks = await list_reviewable_decks(session, user)
     if not decks:
-        await message.answer(
-            "Нет карточек для повторения. Синхронизируйте карточки из Obsidian."
-        )
+        await message.answer("Нет карточек для повторения. Синхронизируйте карточки из Obsidian.")
         return
-    logger.info("Command /review telegram_id=%s pick_deck count=%s", message.from_user.id, len(decks))
+    logger.info(
+        "Command /review telegram_id=%s pick_deck count=%s", message.from_user.id, len(decks)
+    )
     await message.answer(
         "Выберите колоду для повторения:",
         reply_markup=review_deck_keyboard(decks),
@@ -310,9 +301,7 @@ async def on_review_callback(callback: CallbackQuery) -> None:
                 await callback.answer("Некорректная оценка.", show_alert=True)
                 return
 
-            finished, reviewed_count = await rate_current_card(
-                session, review_session, card_id, q
-            )
+            finished, reviewed_count = await rate_current_card(session, review_session, card_id, q)
             await callback.answer()
 
             if finished:
