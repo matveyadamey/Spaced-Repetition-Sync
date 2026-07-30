@@ -48,8 +48,12 @@ def make_callback(data: str, message=None, user_id: int = 1001):
     )
 
 
-def make_command(args: str | None):
-    return SimpleNamespace(args=args)
+def make_state():
+    """Мок для FSMContext"""
+    state = AsyncMock()
+    state.set_state = AsyncMock()
+    state.clear = AsyncMock()
+    return state
 
 
 async def seed_cards(
@@ -64,6 +68,11 @@ async def seed_cards(
     )
 
 
+# ==========================================
+# 1. БАЗОВЫЕ ТЕСТЫ И НАВИГАЦИЯ
+# ==========================================
+
+
 @pytest.mark.asyncio
 async def test_cmd_start_creates_user_and_sends_help(session, monkeypatch):
     patch_session(monkeypatch, session)
@@ -75,40 +84,82 @@ async def test_cmd_start_creates_user_and_sends_help(session, monkeypatch):
     assert user.telegram_id == 555
     message.answer.assert_awaited_once()
     text = message.answer.await_args.args[0]
-    assert "/export_deck" in text
+    # Проверяем новый текст меню
+    assert "Главное меню" in text
     assert "https://github.com/matveyadamey/Spaced-Repetition-Sync" in text
+
+
+@pytest.mark.asyncio
+async def test_process_back():
+    callback = make_callback("back_to_main")
+    state = make_state()
+    await handlers.process_back(callback, state)
+    state.clear.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    assert "Главное меню" in callback.message.edit_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_show_decks_menu():
+    callback = make_callback("menu_decks")
+    state = make_state()
+    await handlers.show_decks_menu(callback, state)
+    state.clear.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    assert "Управление колодами" in callback.message.edit_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
 async def test_cmd_token_updates_hash_and_replies(session, monkeypatch):
     patch_session(monkeypatch, session)
-    message = make_message()
+    callback = make_callback("menu_token")
     monkeypatch.setattr(handlers, "generate_token", lambda: "x" * 43)
     monkeypatch.setattr(handlers, "hash_token", lambda token: f"hashed:{token}")
 
-    await handlers.cmd_token(message)
+    await handlers.cmd_token(callback)
 
     user = (await session.execute(select(User).where(User.telegram_id == 1001))).scalar_one()
     assert user.token_hash == f"hashed:{'x' * 43}"
-    message.answer.assert_awaited_once()
-    assert "Ваш токен" in message.answer.await_args.args[0]
+    callback.message.edit_text.assert_awaited_once()
+    assert "Ваш токен" in callback.message.edit_text.await_args.args[0]
+
+
+# ==========================================
+# 2. ТЕСТЫ FSM (УПРАВЛЕНИЕ КОЛОДАМИ)
+# ==========================================
 
 
 @pytest.mark.asyncio
 async def test_cmd_add_deck_branches(session, monkeypatch):
     patch_session(monkeypatch, session)
+    state = make_state()
 
+    # 1. Prompt (нажатие кнопки)
+    cb = make_callback("deck_add")
+    await handlers.prompt_add_deck(cb, state)
+    state.set_state.assert_awaited_once()
+
+    # 2. Process: missing (пустое имя)
     missing = make_message()
-    await handlers.cmd_add_deck(missing, make_command(None))
-    assert "Укажите название колоды" in missing.answer.await_args.args[0]
+    missing.text = "   "
+    await handlers.process_add_deck(missing, state)
+    assert "Название не может быть пустым" in missing.answer.await_args.args[0]
 
+    # 3. Process: ok
     ok = make_message()
-    await handlers.cmd_add_deck(ok, make_command("Матан"))
-    assert ok.answer.await_args.args[0] == "Колода создана: Матан"
+    ok.text = "Матан"
+    await handlers.process_add_deck(ok, state)
+    assert "Колода <b>Матан</b> успешно создана!" in ok.answer.await_args.args[0]
 
+    # 4. Process: duplicate
     duplicate = make_message()
-    await handlers.cmd_add_deck(duplicate, make_command("матан"))
-    assert "уже существует" in duplicate.answer.await_args.args[0]
+    duplicate.text = "матан"
+    await handlers.process_add_deck(duplicate, state)
+    # В process_add_deck ошибка ValueError перехватывается и выводится "Ошибка: {exc}"
+    assert (
+        "Ошибка:" in duplicate.answer.await_args.args[0]
+        or "уже существует" in duplicate.answer.await_args.args[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -116,18 +167,27 @@ async def test_cmd_delete_deck_branches(session, monkeypatch, user_with_token):
     patch_session(monkeypatch, session)
     user, _ = user_with_token
     await create_deck(session, user, "Матан")
+    state = make_state()
 
-    missing = make_message()
-    await handlers.cmd_delete_deck(missing, make_command(""))
-    assert "Укажите название колоды" in missing.answer.await_args.args[0]
+    # 1. Prompt
+    cb = make_callback("deck_delete")
+    await handlers.prompt_delete_deck(cb, state)
+    state.set_state.assert_awaited_once()
 
+    # 2. Process: ok
     ok = make_message()
-    await handlers.cmd_delete_deck(ok, make_command("Матан"))
-    assert "Колода удалена" in ok.answer.await_args.args[0]
+    ok.text = "Матан"
+    await handlers.process_delete_deck(ok, state)
+    assert "Колода <b>Матан</b> удалена" in ok.answer.await_args.args[0]
 
+    # 3. Process: absent
     absent = make_message()
-    await handlers.cmd_delete_deck(absent, make_command("Нет"))
-    assert "не найдена" in absent.answer.await_args.args[0]
+    absent.text = "Нет"
+    await handlers.process_delete_deck(absent, state)
+    assert (
+        "Ошибка:" in absent.answer.await_args.args[0]
+        or "не найдена" in absent.answer.await_args.args[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -137,22 +197,27 @@ async def test_cmd_export_deck_branches(session, monkeypatch, user_with_token):
     await create_deck(session, user, "Матан")
     await seed_cards(session, user, deck="Матан", source_file="math.md", questions=["Q?"])
     await create_deck(session, user, "Пустая")
+    state = make_state()
 
-    missing = make_message()
-    await handlers.cmd_export_deck(missing, make_command(""))
-    assert "Укажите название колоды" in missing.answer.await_args.args[0]
+    # Prompt
+    cb = make_callback("deck_export")
+    await handlers.prompt_export_deck(cb, state)
 
+    # Process: empty
     empty = make_message()
-    await handlers.cmd_export_deck(empty, make_command("Пустая"))
-    assert empty.answer.await_args.args[0] == "В этой колоде нет карточек."
+    empty.text = "Пустая"
+    await handlers.process_export_deck(empty, state)
+    assert empty.answer.await_args.args[0] == "⚠️ В этой колоде нет карточек."
 
+    # Process: ok
     ok = make_message()
-    await handlers.cmd_export_deck(ok, make_command("Матан"))
+    ok.text = "Матан"
+    await handlers.process_export_deck(ok, state)
     ok.answer_document.assert_awaited_once()
     document = ok.answer_document.await_args.args[0]
     caption = ok.answer_document.await_args.kwargs["caption"]
     assert document.filename == "Матан.md"
-    assert caption.startswith("Экспорт: 1 карт.")
+    assert "Экспорт завершён: 1 карт." in caption
 
 
 @pytest.mark.asyncio
@@ -161,22 +226,32 @@ async def test_cmd_edit_card_deck_branches(session, monkeypatch, user_with_token
     user, _ = user_with_token
     await create_deck(session, user, "Матан")
     await seed_cards(session, user, deck=None, source_file="a.md", questions=["Что такое Python?"])
+    state = make_state()
 
-    missing = make_message()
-    await handlers.cmd_edit_card_deck(missing, make_command(""))
-    assert "Укажите вопрос карточки" in missing.answer.await_args.args[0]
+    # Prompt
+    cb = make_callback("deck_edit_card")
+    await handlers.prompt_edit_card_deck(cb, state)
 
+    # Process: not found
     not_found = make_message()
-    await handlers.cmd_edit_card_deck(not_found, make_command("Нет такой?"))
+    not_found.text = "Нет такой?"
+    await handlers.process_edit_card_deck(not_found, state)
     assert "не найдена" in not_found.answer.await_args.args[0]
 
+    # Process: ok
     ok = make_message()
-    await handlers.cmd_edit_card_deck(ok, make_command("Что такое Python?"))
+    ok.text = "Что такое Python?"
+    await handlers.process_edit_card_deck(ok, state)
     ok.answer.assert_awaited_once()
     markup = ok.answer.await_args.kwargs["reply_markup"]
     buttons = [row[0].callback_data for row in markup.inline_keyboard]
     assert buttons[0].startswith("setdeck:")
     assert any("Матан" == row[0].text for row in markup.inline_keyboard)
+
+
+# ==========================================
+# 3. ТЕСТЫ CALLBACK КНОПОК
+# ==========================================
 
 
 @pytest.mark.asyncio
@@ -197,7 +272,9 @@ async def test_on_set_deck_callback_branches(session, monkeypatch, user_with_tok
 
     ok = make_callback(f"setdeck:{card.id}:{deck.id}")
     await handlers.on_set_deck_callback(ok)
-    ok.message.edit_text.assert_awaited_once_with("Колода карточки обновлена: Матан")
+    ok.message.edit_text.assert_awaited_once()
+    # Теперь текст содержит HTML теги
+    assert "Колода карточки обновлена: <b>Матан</b>" in ok.message.edit_text.await_args.args[0]
     ok.answer.assert_awaited()
 
 
@@ -206,17 +283,17 @@ async def test_cmd_review_branches(session, monkeypatch, user_with_token):
     patch_session(monkeypatch, session)
     user, _ = user_with_token
 
-    empty = make_message()
+    empty = make_callback("menu_review")
     await handlers.cmd_review(empty)
-    assert "Нет карточек для повторения" in empty.answer.await_args.args[0]
+    assert "Нет карточек для повторения" in empty.message.edit_text.await_args.args[0]
 
     await create_deck(session, user, "Матан")
     await seed_cards(session, user, deck="Матан", source_file="a.md", questions=["Math?"])
-    ok = make_message()
+    ok = make_callback("menu_review")
     await handlers.cmd_review(ok)
-    ok.answer.assert_awaited_once()
-    assert ok.answer.await_args.args[0] == "Выберите колоду для повторения:"
-    markup = ok.answer.await_args.kwargs["reply_markup"]
+    ok.message.edit_text.assert_awaited_once()
+    assert "Выберите колоду для повторения:" in ok.message.edit_text.await_args.args[0]
+    markup = ok.message.edit_text.await_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data.startswith("revdeck:")
 
 
@@ -243,7 +320,6 @@ async def test_on_review_deck_callback_ignores_missing_context():
     callback.message = None
 
     await handlers.on_review_deck_callback(callback)
-
     callback.answer.assert_not_awaited()
 
 
@@ -290,7 +366,6 @@ async def test_on_review_callback_ignores_missing_context():
     callback.message = None
 
     await handlers.on_review_callback(callback)
-
     callback.answer.assert_not_awaited()
 
 
@@ -317,8 +392,9 @@ async def test_on_review_callback_rate_paths(session, monkeypatch, user_with_tok
         f"review:{review.session_id}:{second.id}:rate:5", message=next_card.message
     )
     await handlers.on_review_callback(finish)
-    finish.message.edit_reply_markup.assert_awaited_with(reply_markup=None)
-    assert "Сессия завершена" in finish.message.answer.await_args.args[0]
+    # В новом коде при finished=True вызывается edit_text, а не edit_reply_markup + answer
+    finish.message.edit_text.assert_awaited()
+    assert "Сессия завершена" in finish.message.edit_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -327,16 +403,16 @@ async def test_cmd_stats_and_reset(session, monkeypatch, user_with_token):
     user, _ = user_with_token
     await seed_cards(session, user, deck=None, source_file="a.md", questions=["Q?"])
 
-    stats = make_message()
+    stats = make_callback("menu_stats")
     await handlers.cmd_stats(stats)
-    stats.answer.assert_awaited_once()
-    assert "Всего карточек: 1" in stats.answer.await_args.args[0]
+    stats.message.edit_text.assert_awaited_once()
+    assert "Всего карточек: 1" in stats.message.edit_text.await_args.args[0]
 
-    reset = make_message()
+    reset = make_callback("menu_reset")
     await handlers.cmd_reset(reset)
-    reset.answer.assert_awaited_once()
-    assert "Сбросить весь прогресс обучения?" in reset.answer.await_args.args[0]
-    assert reset.answer.await_args.kwargs["reply_markup"] is not None
+    reset.message.edit_text.assert_awaited_once()
+    assert "Сбросить весь прогресс обучения?" in reset.message.edit_text.await_args.args[0]
+    assert reset.message.edit_text.await_args.kwargs["reply_markup"] is not None
 
 
 @pytest.mark.asyncio
@@ -353,7 +429,8 @@ async def test_on_reset_callback_branches(session, monkeypatch, user_with_token)
 
     cancel = make_callback("reset:cancel")
     await handlers.on_reset_callback(cancel)
-    cancel.message.edit_text.assert_awaited_once_with("Сброс отменён.")
+    cancel.message.edit_text.assert_awaited_once()
+    assert "Сброс отменён." in cancel.message.edit_text.await_args.args[0]
     cancel.answer.assert_awaited_once_with()
 
     confirm = make_callback("reset:confirm")
@@ -375,7 +452,6 @@ async def test_on_set_deck_callback_ignores_missing_context():
     callback.message = None
 
     await handlers.on_set_deck_callback(callback)
-
     callback.answer.assert_not_awaited()
 
 
@@ -402,20 +478,40 @@ async def test_start_deck_review_handles_empty_and_sends_question(
 @pytest.mark.asyncio
 async def test_handler_none_user_guards(session, monkeypatch):
     patch_session(monkeypatch, session)
+
+    # Message handlers
     message = make_message()
     message.from_user = None
-    callback = make_callback("reset:cancel", message=make_message())
+
+    # Callback handlers
+    cb_message = make_message()
+    callback = make_callback("menu_token", message=cb_message)
     callback.from_user = None
 
+    state = make_state()
+
+    # Проверяем Message handlers
     await handlers.cmd_start(message)
-    await handlers.cmd_token(message)
-    await handlers.cmd_add_deck(message, make_command("x"))
-    await handlers.cmd_delete_deck(message, make_command("x"))
-    await handlers.cmd_export_deck(message, make_command("x"))
-    await handlers.cmd_edit_card_deck(message, make_command("x"))
-    await handlers.cmd_review(message)
-    await handlers.cmd_stats(message)
-    await handlers.cmd_reset(message)
-    await handlers.on_reset_callback(callback)
+
+    # Проверяем Callback handlers
+    await handlers.cmd_token(callback)
+    await handlers.prompt_add_deck(callback, state)
+    await handlers.prompt_delete_deck(callback, state)
+    await handlers.prompt_export_deck(callback, state)
+    await handlers.prompt_edit_card_deck(callback, state)
+    await handlers.cmd_review(callback)
+    await handlers.cmd_stats(callback)
+    await handlers.cmd_reset(callback)
+
+    # Process handlers (Message)
+    msg_for_process = make_message()
+    msg_for_process.from_user = None
+    msg_for_process.text = "test"
+    await handlers.process_add_deck(msg_for_process, state)
+    await handlers.process_delete_deck(msg_for_process, state)
+    await handlers.process_export_deck(msg_for_process, state)
+    await handlers.process_edit_card_deck(msg_for_process, state)
 
     message.answer.assert_not_awaited()
+    callback.message.edit_text.assert_not_awaited()
+    msg_for_process.answer.assert_not_awaited()

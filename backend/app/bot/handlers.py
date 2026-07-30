@@ -167,6 +167,8 @@ async def show_decks_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu_token")
 async def cmd_token(callback: CallbackQuery) -> None:
+    if callback.from_user is None:
+        return
     await callback.answer()
     token = generate_token()
     token_hash = hash_token(token)
@@ -207,6 +209,8 @@ async def cmd_stats(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu_reset")
 async def cmd_reset(callback: CallbackQuery) -> None:
+    if callback.from_user is None:
+        return
     await callback.answer()
     logger.info("Reset requested by telegram_id=%s", callback.from_user.id)
     await callback.message.edit_text(
@@ -241,9 +245,10 @@ async def cmd_review(callback: CallbackQuery) -> None:
     )
 
 
-# --- Добавление колоды ---
 @router.callback_query(F.data == "deck_add")
 async def prompt_add_deck(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user is None:
+        return
     await callback.answer()
     await callback.message.edit_text(
         text="➕ <b>Добавление колоды</b>\n\nВведите название новой колоды одним сообщением:",
@@ -283,9 +288,10 @@ async def process_add_deck(message: Message, state: FSMContext):
     )
 
 
-# --- Удаление колоды ---
 @router.callback_query(F.data == "deck_delete")
 async def prompt_delete_deck(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user is None:
+        return
     await callback.answer()
     await callback.message.edit_text(
         text="➖ <b>Удаление колоды</b>\n\nВведите точное название колоды, которую хотите удалить:",
@@ -320,9 +326,10 @@ async def process_delete_deck(message: Message, state: FSMContext):
     )
 
 
-# --- Экспорт колоды ---
 @router.callback_query(F.data == "deck_export")
 async def prompt_export_deck(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user is None:
+        return
     await callback.answer()
     await callback.message.edit_text(
         text="<b>Экспорт колоды</b>\n\nВведите название колоды для экспорта:",
@@ -364,9 +371,10 @@ async def process_export_deck(message: Message, state: FSMContext):
     )
 
 
-# --- Смена колоды карточки ---
 @router.callback_query(F.data == "deck_edit_card")
 async def prompt_edit_card_deck(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user is None:
+        return
     await callback.answer()
     await callback.message.edit_text(
         text="<b>Смена колоды карточки</b>\n\nВведите точный текст <b>вопроса</b> карточки:",
