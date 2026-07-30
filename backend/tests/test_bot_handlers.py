@@ -95,6 +95,7 @@ async def test_process_back():
     state = make_state()
     await handlers.process_back(callback, state)
     state.clear.assert_awaited_once()
+    # Теперь это сработает благодаря исправлению в show_main_menu
     callback.message.edit_text.assert_awaited_once()
     assert "Главное меню" in callback.message.edit_text.await_args.args[0]
 
@@ -134,32 +135,28 @@ async def test_cmd_add_deck_branches(session, monkeypatch):
     patch_session(monkeypatch, session)
     state = make_state()
 
-    # 1. Prompt (нажатие кнопки)
     cb = make_callback("deck_add")
     await handlers.prompt_add_deck(cb, state)
     state.set_state.assert_awaited_once()
 
-    # 2. Process: missing (пустое имя)
     missing = make_message()
     missing.text = "   "
     await handlers.process_add_deck(missing, state)
     assert "Название не может быть пустым" in missing.answer.await_args.args[0]
 
-    # 3. Process: ok
     ok = make_message()
     ok.text = "Матан"
     await handlers.process_add_deck(ok, state)
-    assert "Колода <b>Матан</b> успешно создана!" in ok.answer.await_args.args[0]
+    # Проверяем список вызовов, так как их теперь два (успех + возврат в меню)
+    calls = ok.answer.await_args_list
+    assert len(calls) == 2
+    assert "Колода <b>Матан</b> успешно создана!" in calls[0].args[0]
+    assert "Управление колодами" in calls[1].args[0]
 
-    # 4. Process: duplicate
     duplicate = make_message()
     duplicate.text = "матан"
     await handlers.process_add_deck(duplicate, state)
-    # В process_add_deck ошибка ValueError перехватывается и выводится "Ошибка: {exc}"
-    assert (
-        "Ошибка:" in duplicate.answer.await_args.args[0]
-        or "уже существует" in duplicate.answer.await_args.args[0]
-    )
+    assert "Ошибка:" in duplicate.answer.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -169,25 +166,21 @@ async def test_cmd_delete_deck_branches(session, monkeypatch, user_with_token):
     await create_deck(session, user, "Матан")
     state = make_state()
 
-    # 1. Prompt
     cb = make_callback("deck_delete")
     await handlers.prompt_delete_deck(cb, state)
     state.set_state.assert_awaited_once()
 
-    # 2. Process: ok
     ok = make_message()
     ok.text = "Матан"
     await handlers.process_delete_deck(ok, state)
-    assert "Колода <b>Матан</b> удалена" in ok.answer.await_args.args[0]
+    calls = ok.answer.await_args_list
+    assert len(calls) == 2
+    assert "Колода <b>Матан</b> удалена" in calls[0].args[0]
 
-    # 3. Process: absent
     absent = make_message()
     absent.text = "Нет"
     await handlers.process_delete_deck(absent, state)
-    assert (
-        "Ошибка:" in absent.answer.await_args.args[0]
-        or "не найдена" in absent.answer.await_args.args[0]
-    )
+    assert "Ошибка:" in absent.answer.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -199,17 +192,16 @@ async def test_cmd_export_deck_branches(session, monkeypatch, user_with_token):
     await create_deck(session, user, "Пустая")
     state = make_state()
 
-    # Prompt
     cb = make_callback("deck_export")
     await handlers.prompt_export_deck(cb, state)
 
-    # Process: empty
     empty = make_message()
     empty.text = "Пустая"
     await handlers.process_export_deck(empty, state)
-    assert empty.answer.await_args.args[0] == "⚠️ В этой колоде нет карточек."
+    calls = empty.answer.await_args_list
+    assert len(calls) == 2
+    assert "⚠️ В этой колоде нет карточек." in calls[0].args[0]
 
-    # Process: ok
     ok = make_message()
     ok.text = "Матан"
     await handlers.process_export_deck(ok, state)
@@ -218,6 +210,11 @@ async def test_cmd_export_deck_branches(session, monkeypatch, user_with_token):
     caption = ok.answer_document.await_args.kwargs["caption"]
     assert document.filename == "Матан.md"
     assert "Экспорт завершён: 1 карт." in caption
+
+    # После отправки документа тоже отправляется меню
+    menu_calls = ok.answer.await_args_list
+    assert len(menu_calls) == 1
+    assert "Управление колодами" in menu_calls[0].args[0]
 
 
 @pytest.mark.asyncio

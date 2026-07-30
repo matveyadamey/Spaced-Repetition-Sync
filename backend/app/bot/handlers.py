@@ -131,7 +131,7 @@ async def show_main_menu(target: Message | CallbackQuery):
         "а повторения проходят здесь, в Telegram.\n\n"
         f"🔗 Инструкция: {settings.plugin_install_url}"
     )
-    if isinstance(target, CallbackQuery):
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
         await target.message.edit_text(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
     else:
         await target.answer(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
