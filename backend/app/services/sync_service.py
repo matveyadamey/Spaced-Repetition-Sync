@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,7 +62,7 @@ async def sync_cards(
     note_cards = {card.question: card for card in note_result.scalars().all()}
 
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     incoming_questions: set[str] = set()
 
     for card_in in unique_cards:

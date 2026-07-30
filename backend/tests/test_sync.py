@@ -1,12 +1,11 @@
 import pytest
-from sqlalchemy import select
-
 from app.models.card import Card
 from app.models.deck import Deck
 from app.models.progress import Progress
 from app.schemas.sync import SyncCardIn
 from app.services.deck_service import create_deck
 from app.services.sync_service import sync_cards
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

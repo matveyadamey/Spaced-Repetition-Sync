@@ -1,7 +1,6 @@
 from datetime import date, timedelta
 
 import pytest
-
 from app.services.sm2 import apply_sm2
 
 

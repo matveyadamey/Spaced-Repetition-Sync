@@ -1,5 +1,5 @@
 import secrets
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,7 @@ async def deactivate_active_sessions(session: AsyncSession, user_id: int) -> Non
     await session.execute(
         update(ReviewSession)
         .where(ReviewSession.user_id == user_id, ReviewSession.is_active.is_(True))
-        .values(is_active=False, finished_at=datetime.now(timezone.utc))
+        .values(is_active=False, finished_at=datetime.now(UTC))
     )
 
 
@@ -109,7 +109,12 @@ async def start_review_session(
     due_result = await session.execute(
         select(Card.id)
         .join(Progress, Progress.card_id == Card.id)
-        .where(Card.user_id == user.id, Progress.next_review <= today, deck_clause)
+        .where(
+            Card.user_id == user.id,
+            Progress.next_review <= today,
+            Progress.repetition > 0,
+            deck_clause,
+        )
         .order_by(Progress.next_review.asc(), Card.id.asc())
     )
     card_ids = list(due_result.scalars().all())
@@ -197,7 +202,7 @@ async def rate_current_card(
     progress.ease_factor = sm2.ease_factor
     progress.repetition = sm2.repetition
     progress.next_review = sm2.next_review
-    progress.updated_at = datetime.now(timezone.utc)
+    progress.updated_at = datetime.now(UTC)
 
     review_session.current_index += 1
     review_session.reviewed_count += 1
@@ -205,7 +210,7 @@ async def rate_current_card(
     finished = review_session.current_index >= len(review_session.card_ids)
     if finished:
         review_session.is_active = False
-        review_session.finished_at = datetime.now(timezone.utc)
+        review_session.finished_at = datetime.now(UTC)
 
     await session.commit()
     return finished, review_session.reviewed_count
@@ -213,7 +218,7 @@ async def rate_current_card(
 
 async def get_stats(session: AsyncSession, user: User) -> dict[str, int | float]:
     today = date.today()
-    start_of_day = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+    start_of_day = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
 
     total = await session.scalar(
         select(func.count()).select_from(Card).where(Card.user_id == user.id)
@@ -264,7 +269,7 @@ async def get_stats(session: AsyncSession, user: User) -> dict[str, int | float]
 
 async def reset_progress(session: AsyncSession, user: User) -> int:
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await session.execute(
         select(Progress)
         .join(Card, Card.id == Progress.card_id)
@@ -308,7 +313,7 @@ async def set_card_deck(
         if deck_result.scalar_one_or_none() is None:
             raise ValueError("Колода не найдена")
     card.deck_id = deck_id
-    card.updated_at = datetime.now(timezone.utc)
+    card.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(card)
     return card

@@ -2,7 +2,6 @@ import hashlib
 import secrets
 import string
 
-
 TOKEN_ALPHABET = string.ascii_letters + string.digits
 TOKEN_LENGTH = 48
 

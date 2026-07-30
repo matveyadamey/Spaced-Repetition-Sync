@@ -1,6 +1,4 @@
 import pytest
-from sqlalchemy import select
-
 from app.models.card import Card
 from app.schemas.sync import SyncCardIn
 from app.services.deck_service import create_deck
@@ -12,6 +10,7 @@ from app.services.export_service import (
     safe_filename,
 )
 from app.services.sync_service import sync_cards
+from sqlalchemy import select
 
 
 def test_format_card_single_line():
