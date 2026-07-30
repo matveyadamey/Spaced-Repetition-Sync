@@ -98,29 +98,44 @@ def get_back_to_main_kb():
     return keyboard
 
 
-async def _send_question(message: Message, session_id: str, card) -> None:
-    await message.answer(
-        card.question,
-        reply_markup=show_answer_keyboard(session_id, card.id),
-    )
+async def _send_error(target: Message | CallbackQuery, text: str) -> None:
+    """Универсальная отправка ошибки: edit_text для callback, answer для message"""
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(text, reply_markup=get_back_to_main_kb())
+    else:
+        await target.answer(text, reply_markup=get_back_to_main_kb())
 
 
-async def _start_deck_review(message: Message, user_telegram_id: int, deck_id: int | None) -> None:
+async def _send_question(target: Message | CallbackQuery, session_id: str, card) -> None:
+    """Универсальная отправка вопроса: редактирует сообщение, если это callback"""
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            card.question,
+            reply_markup=show_answer_keyboard(session_id, card.id),
+        )
+    else:
+        await target.answer(
+            card.question,
+            reply_markup=show_answer_keyboard(session_id, card.id),
+        )
+
+
+async def _start_deck_review(
+    target: Message | CallbackQuery, user_telegram_id: int, deck_id: int | None
+) -> None:
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, user_telegram_id)
         review_session = await start_review_session(session, user, deck_id=deck_id)
         if review_session is None:
-            await message.answer(
-                "В этой колоде нет карточек для повторения.", reply_markup=get_back_to_main_kb()
-            )
+            await _send_error(target, "В этой колоде нет карточек для повторения.")
             return
         card = await get_current_card(session, review_session)
         if card is None:
-            await message.answer(
-                "В этой колоде нет карточек для повторения.", reply_markup=get_back_to_main_kb()
-            )
+            await _send_error(target, "В этой колоде нет карточек для повторения.")
             return
-        await _send_question(message, review_session.session_id, card)
+
+        # Теперь это отредактирует сообщение "Выберите колоду", превратив его в вопрос!
+        await _send_question(target, review_session.session_id, card)
 
 
 async def show_main_menu(target: Message | CallbackQuery):
@@ -462,9 +477,10 @@ async def on_review_deck_callback(callback: CallbackQuery) -> None:
     except ValueError:
         await callback.answer("Некорректные данные.", show_alert=True)
         return
+
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await _start_deck_review(callback.message, callback.from_user.id, deck_id)
+
+    await _start_deck_review(callback, callback.from_user.id, deck_id)
 
 
 @router.callback_query(F.data.startswith("review:"))
@@ -524,7 +540,6 @@ async def on_review_callback(callback: CallbackQuery) -> None:
                     parse_mode="HTML",
                 )
                 return
-
             next_card = await get_current_card(session, review_session)
             if next_card is None:
                 await callback.message.edit_text(
@@ -533,7 +548,8 @@ async def on_review_callback(callback: CallbackQuery) -> None:
                     parse_mode="HTML",
                 )
                 return
-            await _send_question(callback.message, session_id, next_card)
+
+            await _send_question(callback, session_id, next_card)
             return
 
     await callback.answer("Неизвестное действие.", show_alert=True)

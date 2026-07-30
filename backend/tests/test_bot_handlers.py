@@ -270,7 +270,6 @@ async def test_on_set_deck_callback_branches(session, monkeypatch, user_with_tok
     ok = make_callback(f"setdeck:{card.id}:{deck.id}")
     await handlers.on_set_deck_callback(ok)
     ok.message.edit_text.assert_awaited_once()
-    # Теперь текст содержит HTML теги
     assert "Колода карточки обновлена: <b>Матан</b>" in ok.message.edit_text.await_args.args[0]
     ok.answer.assert_awaited()
 
@@ -313,9 +312,10 @@ async def test_on_review_deck_callback_branches(monkeypatch):
     monkeypatch.setattr(handlers, "_start_deck_review", called)
     ok = make_callback("revdeck:0")
     await handlers.on_review_deck_callback(ok)
+
     ok.answer.assert_awaited_once_with()
-    ok.message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
-    called.assert_awaited_once_with(ok.message, 1001, None)
+
+    called.assert_awaited_once_with(ok, 1001, None)
 
 
 @pytest.mark.asyncio
@@ -474,15 +474,21 @@ async def test_start_deck_review_handles_empty_and_sends_question(
     await create_deck(session, user, "Матан")
     deck = (await session.execute(select(Deck).where(Deck.user_id == user.id))).scalar_one()
 
-    empty = make_message()
-    await handlers._start_deck_review(empty, user.telegram_id, deck.id)
-    assert "нет карточек" in empty.answer.await_args.args[0].casefold()
+    empty_msg = make_message()
+    await handlers._start_deck_review(empty_msg, user.telegram_id, deck.id)
+    assert "нет карточек" in empty_msg.answer.await_args.args[0].casefold()
 
     await seed_cards(session, user, deck="Матан", source_file="a.md", questions=["Math?"])
-    full = make_message()
-    await handlers._start_deck_review(full, user.telegram_id, deck.id)
-    full.answer.assert_awaited_once()
-    assert full.answer.await_args.args[0] == "Math?"
+    full_msg = make_message()
+    await handlers._start_deck_review(full_msg, user.telegram_id, deck.id)
+    full_msg.answer.assert_awaited_once()
+    assert full_msg.answer.await_args.args[0] == "Math?"
+
+    full_cb = make_callback("revdeck:0")
+    await handlers._start_deck_review(full_cb, user.telegram_id, deck.id)
+
+    full_cb.message.edit_text.assert_awaited_once()
+    assert full_cb.message.edit_text.await_args.args[0] == "Math?"
 
 
 @pytest.mark.asyncio
