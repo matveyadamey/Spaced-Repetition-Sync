@@ -107,7 +107,7 @@ async def test_show_decks_menu():
     await handlers.show_decks_menu(callback, state)
     state.clear.assert_awaited_once()
     callback.message.edit_text.assert_awaited_once()
-    assert "Управление колодами" in callback.message.edit_text.await_args.args[0]
+    assert "Управление колодами" in callback.message.edit_text.await_args.kwargs["text"]
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_cmd_token_updates_hash_and_replies(session, monkeypatch):
     user = (await session.execute(select(User).where(User.telegram_id == 1001))).scalar_one()
     assert user.token_hash == f"hashed:{'x' * 43}"
     callback.message.edit_text.assert_awaited_once()
-    assert "Ваш токен" in callback.message.edit_text.await_args.args[0]
+    assert "Ваш токен" in callback.message.edit_text.await_args.kwargs["text"]
 
 
 # ==========================================
@@ -282,14 +282,14 @@ async def test_cmd_review_branches(session, monkeypatch, user_with_token):
 
     empty = make_callback("menu_review")
     await handlers.cmd_review(empty)
-    assert "Нет карточек для повторения" in empty.message.edit_text.await_args.args[0]
+    assert "Нет карточек для повторения" in empty.message.edit_text.await_args.kwargs["text"]
 
     await create_deck(session, user, "Матан")
     await seed_cards(session, user, deck="Матан", source_file="a.md", questions=["Math?"])
     ok = make_callback("menu_review")
     await handlers.cmd_review(ok)
     ok.message.edit_text.assert_awaited_once()
-    assert "Выберите колоду для повторения:" in ok.message.edit_text.await_args.args[0]
+    assert "Выберите колоду для повторения:" in ok.message.edit_text.await_args.kwargs["text"]
     markup = ok.message.edit_text.await_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data.startswith("revdeck:")
 
@@ -403,12 +403,12 @@ async def test_cmd_stats_and_reset(session, monkeypatch, user_with_token):
     stats = make_callback("menu_stats")
     await handlers.cmd_stats(stats)
     stats.message.edit_text.assert_awaited_once()
-    assert "Всего карточек: 1" in stats.message.edit_text.await_args.args[0]
+    assert "Всего карточек: 1" in stats.message.edit_text.await_args.kwargs["text"]
 
     reset = make_callback("menu_reset")
     await handlers.cmd_reset(reset)
     reset.message.edit_text.assert_awaited_once()
-    assert "Сбросить весь прогресс обучения?" in reset.message.edit_text.await_args.args[0]
+    assert "Сбросить весь прогресс обучения?" in reset.message.edit_text.await_args.kwargs["text"]
     assert reset.message.edit_text.await_args.kwargs["reply_markup"] is not None
 
 
