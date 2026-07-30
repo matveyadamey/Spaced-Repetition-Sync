@@ -11,7 +11,8 @@ def show_answer_keyboard(session_id: str, card_id: int) -> InlineKeyboardMarkup:
                     text="Показать ответ",
                     callback_data=f"review:{session_id}:{card_id}:show",
                 )
-            ]
+            ],
+            [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
         ]
     )
 
@@ -32,7 +33,8 @@ def rate_keyboard(session_id: str, card_id: int) -> InlineKeyboardMarkup:
                     text="Легко",
                     callback_data=f"review:{session_id}:{card_id}:rate:5",
                 ),
-            ]
+            ],
+            [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
         ]
     )
 

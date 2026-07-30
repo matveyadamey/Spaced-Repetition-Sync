@@ -222,25 +222,33 @@ async def cmd_reset(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu_review")
 async def cmd_review(callback: CallbackQuery) -> None:
-    await callback.answer()
     if callback.from_user is None:
         return
+
+    await callback.answer()
+
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, callback.from_user.id)
         decks = await list_reviewable_decks(session, user)
 
     if not decks:
-        await callback.message.edit_text(
-            text="Нет карточек для повторения.\n\nСинхронизируйте карточки из Obsidian или добавьте новые.",
+        await callback.message.answer(
+            text=" Нет карточек для повторения.\n\nСинхронизируйте карточки из Obsidian или добавьте новые.",
             reply_markup=get_back_to_main_kb(),
             parse_mode="HTML",
         )
         return
 
     logger.info("Review started by telegram_id=%s", callback.from_user.id)
-    await callback.message.edit_text(
+
+    kb = review_deck_keyboard(decks)
+    kb.inline_keyboard.append(
+        [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")]
+    )
+
+    await callback.message.answer(
         text="<b>Выберите колоду для повторения:</b>",
-        reply_markup=review_deck_keyboard(decks),
+        reply_markup=kb,
         parse_mode="HTML",
     )
 

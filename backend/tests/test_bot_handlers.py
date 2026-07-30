@@ -282,16 +282,25 @@ async def test_cmd_review_branches(session, monkeypatch, user_with_token):
 
     empty = make_callback("menu_review")
     await handlers.cmd_review(empty)
-    assert "Нет карточек для повторения" in empty.message.edit_text.await_args.kwargs["text"]
+
+    assert "Нет карточек для повторения" in empty.message.answer.await_args.kwargs["text"]
+    assert empty.message.answer.await_args.kwargs["reply_markup"] is not None
 
     await create_deck(session, user, "Матан")
     await seed_cards(session, user, deck="Матан", source_file="a.md", questions=["Math?"])
+
     ok = make_callback("menu_review")
     await handlers.cmd_review(ok)
-    ok.message.edit_text.assert_awaited_once()
-    assert "Выберите колоду для повторения:" in ok.message.edit_text.await_args.kwargs["text"]
-    markup = ok.message.edit_text.await_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].callback_data.startswith("revdeck:")
+
+    ok.message.answer.assert_awaited_once()
+    assert "Выберите колоду для повторения:" in ok.message.answer.await_args.kwargs["text"]
+
+    markup = ok.message.answer.await_args.kwargs["reply_markup"]
+
+    all_callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+
+    assert any(data.startswith("revdeck:") for data in all_callbacks)
+    assert "back_to_main" in all_callbacks
 
 
 @pytest.mark.asyncio
@@ -345,6 +354,10 @@ async def test_on_review_callback_show_and_invalid_cases(session, monkeypatch, u
     show.message.edit_text.assert_awaited_once()
     assert "A:Show?" in show.message.edit_text.await_args.args[0]
     show.answer.assert_awaited_once_with()
+
+    markup = show.message.edit_text.await_args.kwargs["reply_markup"]
+    all_callbacks = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "back_to_main" in all_callbacks
 
     bad_rate = make_callback(f"review:{review.session_id}:{card.id}:rate:2")
     await handlers.on_review_callback(bad_rate)
