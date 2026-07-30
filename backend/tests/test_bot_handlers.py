@@ -2,8 +2,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
-
 from app.bot import handlers
 from app.models.card import Card
 from app.models.deck import Deck
@@ -13,6 +11,7 @@ from app.schemas.sync import SyncCardIn
 from app.services.deck_service import create_deck
 from app.services.review_service import get_or_create_user
 from app.services.sync_service import sync_cards
+from sqlalchemy import select
 
 
 class SessionManager:
