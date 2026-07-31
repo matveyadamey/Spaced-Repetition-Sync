@@ -22,7 +22,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.deck import Deck
 from app.services import deck_service
-from app.services.deck_service import NO_DECK_LABEL, list_names_of_decks
+from app.services.deck_service import NO_DECK_LABEL
 from app.services.export_service import DEFAULT_DELIMITER, export_deck_markdown
 from app.services.review_service import (
     find_card_by_question,
@@ -272,8 +272,13 @@ async def cmd_review(callback: CallbackQuery) -> None:
 async def cmd_decks_list(callback: CallbackQuery):
     if callback.from_user is None:
         return
+
     await callback.answer()
-    decks: str = await list_names_of_decks()
+
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(session, callback.from_user.id)
+        decks = await deck_service.list_names_of_decks(session, user)
+
     if len(decks) > 0:
         await callback.message.edit_text(
             text=f"<b>Ваши колоды:</b> \n {decks}",
