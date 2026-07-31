@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,10 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    allow_notifications: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
 
     cards = relationship("Card", back_populates="user", cascade="all, delete-orphan")
     decks = relationship("Deck", back_populates="user", cascade="all, delete-orphan")

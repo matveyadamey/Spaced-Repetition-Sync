@@ -24,6 +24,7 @@ from app.models.deck import Deck
 from app.services import deck_service
 from app.services.deck_service import NO_DECK_LABEL
 from app.services.export_service import DEFAULT_DELIMITER, export_deck_markdown
+from app.services.notification_service import get_allow_notifications, set_notifications_permission
 from app.services.review_service import (
     find_card_by_question,
     get_active_session,
@@ -59,6 +60,7 @@ def get_main_menu_kb():
             [InlineKeyboardButton(text="Управление колодами", callback_data="menu_decks")],
             [InlineKeyboardButton(text="Статистика", callback_data="menu_stats")],
             [InlineKeyboardButton(text="Сброс прогресса", callback_data="menu_reset")],
+            [InlineKeyboardButton(text="Настройки", callback_data="settings")],
         ]
     )
     return keyboard
@@ -601,3 +603,91 @@ async def on_reset_callback(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     await callback.answer()
+
+
+@router.callback_query(F.data == "disable_notifications")
+async def cmd_disable_notifications(callback: CallbackQuery) -> None:
+    if callback.from_user is None:
+        return
+    await callback.answer()
+
+    await set_notifications_permission(callback.from_user.id, False)
+
+    await callback.message.edit_text(
+        text="Уведомления отключены",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
+                [
+                    InlineKeyboardButton(
+                        text="Включить уведомления", callback_data="enable_notifications"
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "enable_notifications")
+async def cmd_enable_notifications(callback: CallbackQuery) -> None:
+    if callback.from_user is None:
+        return
+    await callback.answer()
+
+    await set_notifications_permission(callback.from_user.id, True)
+
+    await callback.message.edit_text(
+        text="Уведомления включены",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
+                [
+                    InlineKeyboardButton(
+                        text="Отключить уведомления", callback_data="disable_notifications"
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "settings")
+async def settings_menu(callback: CallbackQuery) -> None:
+    if callback.from_user is None:
+        return
+    await callback.answer()
+
+    allow = await get_allow_notifications(callback.from_user.id)
+
+    if allow:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
+                [
+                    InlineKeyboardButton(
+                        text="Отключить уведомления", callback_data="disable_notifications"
+                    )
+                ],
+            ]
+        )
+        text_status = "Уведомления: <b>Включены</b>"
+    else:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
+                [
+                    InlineKeyboardButton(
+                        text="Включить уведомления", callback_data="enable_notifications"
+                    )
+                ],
+            ]
+        )
+        text_status = "Уведомления: <b>Отключены</b>"
+
+    await callback.message.edit_text(
+        text=f"⚙️ <b>Настройки</b>\n\n{text_status}",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
