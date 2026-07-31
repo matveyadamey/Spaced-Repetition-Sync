@@ -23,7 +23,7 @@ async def list_names_of_decks(session: AsyncSession, user: User) -> str:
     names_of_decks: list[str] = []
     deck: Deck
     for deck in decks:
-        decks.append(deck.name)
+        names_of_decks.append(deck.name)
     return "\n".join(names_of_decks)
 
 
