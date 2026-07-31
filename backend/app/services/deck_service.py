@@ -18,6 +18,15 @@ async def list_decks(session: AsyncSession, user: User) -> list[Deck]:
     return list(result.scalars().all())
 
 
+async def list_names_of_decks(session: AsyncSession, user: User) -> str:
+    decks = await list_decks(session, user)
+    names_of_decks: list[str] = []
+    deck: Deck
+    for deck in decks:
+        decks.append(deck.name)
+    return "\n".join(names_of_decks)
+
+
 async def get_deck_by_name(session: AsyncSession, user: User, name: str) -> Deck | None:
     normalized = normalize_deck_name(name)
     if not normalized:

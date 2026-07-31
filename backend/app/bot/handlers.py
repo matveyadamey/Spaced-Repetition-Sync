@@ -22,7 +22,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.deck import Deck
 from app.services import deck_service
-from app.services.deck_service import NO_DECK_LABEL
+from app.services.deck_service import NO_DECK_LABEL, list_names_of_decks
 from app.services.export_service import DEFAULT_DELIMITER, export_deck_markdown
 from app.services.review_service import (
     find_card_by_question,
@@ -68,6 +68,7 @@ def get_decks_menu_kb():
     """Клавиатура меню колод"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Мои колоды", callback_data="decks_list")],
             [InlineKeyboardButton(text="Добавить колоду", callback_data="deck_add")],
             [InlineKeyboardButton(text="Удалить колоду", callback_data="deck_delete")],
             [InlineKeyboardButton(text="Сменить колоду карточки", callback_data="deck_edit_card")],
@@ -134,7 +135,6 @@ async def _start_deck_review(
             await _send_error(target, "В этой колоде нет карточек для повторения.")
             return
 
-        # Теперь это отредактирует сообщение "Выберите колоду", превратив его в вопрос!
         await _send_question(target, review_session.session_id, card)
 
 
@@ -266,6 +266,26 @@ async def cmd_review(callback: CallbackQuery) -> None:
         reply_markup=kb,
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "decks_list")
+async def cmd_decks_list(callback: CallbackQuery):
+    if callback.from_user is None:
+        return
+    await callback.answer()
+    decks: str = await list_names_of_decks()
+    if len(decks) > 0:
+        await callback.message.edit_text(
+            text=f"<b>Ваши колоды:</b> \n {decks}",
+            reply_markup=get_back_to_decks_kb(),
+            parse_mode="HTML",
+        )
+    else:
+        await callback.message.edit_text(
+            text="Список колод пуст",
+            reply_markup=get_back_to_decks_kb(),
+            parse_mode="HTML",
+        )
 
 
 @router.callback_query(F.data == "deck_add")
