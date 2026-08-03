@@ -891,13 +891,13 @@ async def test_cmd_decks_list_shows_decks_or_empty(session, monkeypatch, user_wi
 
 @pytest.mark.asyncio
 async def test_cmd_decks_list_ignores_missing_user():
-    """decks_list не падает если from_user=None"""
+    """decks_list не вызывает ничего если from_user=None"""
     callback = make_callback("decks_list")
     callback.from_user = None
 
     await handlers.cmd_decks_list(callback)
 
-    callback.answer.assert_awaited_once()
+    callback.answer.assert_not_awaited()
     callback.message.edit_text.assert_not_awaited()
 
 
@@ -979,7 +979,9 @@ async def test_disable_notifications_updates_permission(monkeypatch):
     callback.answer.assert_awaited_once()
     mock_set.assert_awaited_once_with(1001, False)
     callback.message.edit_text.assert_awaited_once()
-    assert "Уведомления отключены" in callback.message.edit_text.await_args.args[0]
+
+    text = callback.message.edit_text.await_args.kwargs["text"]
+    assert "Уведомления отключены" in text
 
     markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
     buttons = [btn for row in markup.inline_keyboard for btn in row]
@@ -997,7 +999,9 @@ async def test_enable_notifications_updates_permission(monkeypatch):
     callback.answer.assert_awaited_once()
     mock_set.assert_awaited_once_with(1001, True)
     callback.message.edit_text.assert_awaited_once()
-    assert "Уведомления включены" in callback.message.edit_text.await_args.args[0]
+
+    text = callback.message.edit_text.await_args.kwargs["text"]
+    assert "Уведомления включены" in text
 
     markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
     buttons = [btn for row in markup.inline_keyboard for btn in row]
@@ -1006,35 +1010,35 @@ async def test_enable_notifications_updates_permission(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_disable_notifications_ignores_missing_user():
-    """disable_notifications не падает если from_user=None"""
+    """disable_notifications не вызывает ничего если from_user=None"""
     callback = make_callback("disable_notifications")
     callback.from_user = None
 
     await handlers.cmd_disable_notifications(callback)
 
-    callback.answer.assert_awaited_once()
+    callback.answer.assert_not_awaited()
     callback.message.edit_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_enable_notifications_ignores_missing_user():
-    """enable_notifications не падает если from_user=None"""
+    """enable_notifications не вызывает ничего если from_user=None"""
     callback = make_callback("enable_notifications")
     callback.from_user = None
 
     await handlers.cmd_enable_notifications(callback)
 
-    callback.answer.assert_awaited_once()
+    callback.answer.assert_not_awaited()
     callback.message.edit_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_settings_menu_ignores_missing_user():
-    """settings_menu не падает если from_user=None"""
+    """settings_menu не вызывает ничего если from_user=None"""
     callback = make_callback("settings")
     callback.from_user = None
 
     await handlers.settings_menu(callback)
 
-    callback.answer.assert_awaited_once()
+    callback.answer.assert_not_awaited()
     callback.message.edit_text.assert_not_awaited()
