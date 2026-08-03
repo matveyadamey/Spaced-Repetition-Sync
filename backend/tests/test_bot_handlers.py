@@ -1,7 +1,8 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from aiogram import Bot
 from app.bot import handlers
 from app.models.card import Card
 from app.models.deck import Deck
@@ -65,6 +66,7 @@ async def seed_cards(
         source_file=source_file,
         deck=deck,
         cards=[SyncCardIn(question=q, answer=f"A:{q}") for q in questions],
+        bot=None,  # явно передаём None — уведомления не нужны в тестах seed
     )
 
 
@@ -74,19 +76,37 @@ async def seed_cards(
 
 
 @pytest.mark.asyncio
-async def test_cmd_start_creates_user_and_sends_help(session, monkeypatch):
+async def test_cmd_start_creates_user_and_launches_onboarding(session, monkeypatch):
+    """cmd_start теперь запускает онбординг, а не сразу главное меню"""
     patch_session(monkeypatch, session)
     message = make_message(555)
+    state = make_state()
 
-    await handlers.cmd_start(message)
+    await handlers.cmd_start(message, state)
 
     user = await get_or_create_user(session, 555)
     assert user.telegram_id == 555
     message.answer.assert_awaited_once()
     text = message.answer.await_args.args[0]
-    # Проверяем новый текст меню
-    assert "Главное меню" in text
-    assert "https://github.com/matveyadamey/Spaced-Repetition-Sync" in text
+    # Проверяем текст онбординга
+    assert "Spaced Repetition Sync" in text
+    assert "настроим" in text
+    # FSM должна быть установлена в welcome
+    state.set_state.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_help_command_relaunches_onboarding(session, monkeypatch):
+    """Команда /help перезапускает онбординг"""
+    patch_session(monkeypatch, session)
+    message = make_message(777)
+    state = make_state()
+
+    await handlers.cmd_help(message, state)
+
+    message.answer.assert_awaited_once()
+    assert "Spaced Repetition Sync" in message.answer.await_args.args[0]
+    state.set_state.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -95,7 +115,6 @@ async def test_process_back():
     state = make_state()
     await handlers.process_back(callback, state)
     state.clear.assert_awaited_once()
-    # Теперь это сработает благодаря исправлению в show_main_menu
     callback.message.edit_text.assert_awaited_once()
     assert "Главное меню" in callback.message.edit_text.await_args.args[0]
 
@@ -122,7 +141,14 @@ async def test_cmd_token_updates_hash_and_replies(session, monkeypatch):
     user = (await session.execute(select(User).where(User.telegram_id == 1001))).scalar_one()
     assert user.token_hash == f"hashed:{'x' * 43}"
     callback.message.edit_text.assert_awaited_once()
-    assert "Ваш токен" in callback.message.edit_text.await_args.kwargs["text"]
+    # Теперь текст содержит "Новый токен" и инструкцию про кнопку копирования
+    text = callback.message.edit_text.await_args.kwargs["text"]
+    assert "Новый токен" in text
+    assert "Скопировать токен" in text
+    # Кнопка с copy_text должна быть в клавиатуре
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.text == "📋 Скопировать токен" for btn in buttons)
 
 
 # ==========================================
@@ -147,7 +173,6 @@ async def test_cmd_add_deck_branches(session, monkeypatch):
     ok = make_message()
     ok.text = "Матан"
     await handlers.process_add_deck(ok, state)
-    # Проверяем список вызовов, так как их теперь два (успех + возврат в меню)
     calls = ok.answer.await_args_list
     assert len(calls) == 2
     assert "Колода <b>Матан</b> успешно создана!" in calls[0].args[0]
@@ -211,7 +236,6 @@ async def test_cmd_export_deck_branches(session, monkeypatch, user_with_token):
     assert document.filename == "Матан.md"
     assert "Экспорт завершён: 1 карт." in caption
 
-    # После отправки документа тоже отправляется меню
     menu_calls = ok.answer.await_args_list
     assert len(menu_calls) == 1
     assert "Управление колодами" in menu_calls[0].args[0]
@@ -225,17 +249,14 @@ async def test_cmd_edit_card_deck_branches(session, monkeypatch, user_with_token
     await seed_cards(session, user, deck=None, source_file="a.md", questions=["Что такое Python?"])
     state = make_state()
 
-    # Prompt
     cb = make_callback("deck_edit_card")
     await handlers.prompt_edit_card_deck(cb, state)
 
-    # Process: not found
     not_found = make_message()
     not_found.text = "Нет такой?"
     await handlers.process_edit_card_deck(not_found, state)
     assert "не найдена" in not_found.answer.await_args.args[0]
 
-    # Process: ok
     ok = make_message()
     ok.text = "Что такое Python?"
     await handlers.process_edit_card_deck(ok, state)
@@ -247,7 +268,287 @@ async def test_cmd_edit_card_deck_branches(session, monkeypatch, user_with_token
 
 
 # ==========================================
-# 3. ТЕСТЫ CALLBACK КНОПОК
+# 3. ТЕСТЫ ОНБОРДИНГА (НОВЫЕ)
+# ==========================================
+
+
+@pytest.mark.asyncio
+async def test_onboarding_start_shows_token():
+    """Начало онбординга генерирует токен и показывает его"""
+    callback = make_callback("onboarding_start")
+    state = make_state()
+
+    with (
+        patch.object(handlers, "generate_token", return_value="test-token-123"),
+        patch.object(handlers, "hash_token", return_value="hashed-test"),
+        patch.object(handlers, "get_or_create_user", new=AsyncMock()),
+        patch.object(handlers, "AsyncSessionLocal", return_value=SessionManager(AsyncMock())),
+    ):
+        await handlers.onboarding_start_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    text = callback.message.edit_text.await_args.args[0]
+    assert "Шаг 1/3" in text
+    assert "test-token-123" in text
+    state.set_state.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_onboarding_skip_finishes_immediately():
+    """Пропуск онбординга сразу ведёт в главное меню"""
+    callback = make_callback("onboarding_skip")
+    state = make_state()
+
+    await handlers.onboarding_skip_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    state.clear.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    assert "Настройка завершена" in callback.message.edit_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_onboarding_install_shows_brat_link():
+    """Шаг установки показывает deep link для BRAT"""
+    callback = make_callback("onboarding_install")
+    state = make_state()
+
+    await handlers.onboarding_install_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    install_btn = next(b for b in buttons if b.text == "📦 Установить плагин в Obsidian")
+    assert "obsidian://brat" in install_btn.url
+    assert "Spaced-Repetition-Sync" in install_btn.url
+
+
+@pytest.mark.asyncio
+async def test_onboarding_install_brat_shows_store_link():
+    """Инструкция по BRAT показывает ссылку на Community Store"""
+    callback = make_callback("onboarding_install_brat")
+    state = make_state()
+
+    await handlers.onboarding_install_brat_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    brat_btn = next(b for b in buttons if b.text == "📦 Установить BRAT из Community Store")
+    assert "obsidian://show-plugin" in brat_btn.url
+    assert "brat" in brat_btn.url.lower()
+
+
+@pytest.mark.asyncio
+async def test_onboarding_card_shows_example():
+    """Шаг создания карточки показывает пример формата"""
+    callback = make_callback("onboarding_card")
+    state = make_state()
+
+    await handlers.onboarding_card_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    text = callback.message.edit_text.await_args.args[0]
+    assert "Шаг 3/3" in text
+    assert "Python" in text
+    assert "::" in text
+
+
+@pytest.mark.asyncio
+async def test_onboarding_finish_goes_to_main_menu():
+    """Завершение онбординга ведёт в главное меню"""
+    callback = make_callback("onboarding_finish")
+    state = make_state()
+
+    await handlers.onboarding_finish_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    state.clear.assert_awaited_once()
+    assert "Настройка завершена" in callback.message.edit_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_menu_install_opens_install_step():
+    """Кнопка 'Установка плагина' в меню открывает шаг установки"""
+    callback = make_callback("menu_install")
+    state = make_state()
+
+    await handlers.menu_install_handler(callback, state)
+
+    callback.answer.assert_awaited_once()
+    text = callback.message.edit_text.await_args.args[0]
+    assert "Установка плагина" in text or "Шаг 2" in text
+
+
+# ==========================================
+# 4. ТЕСТЫ notify_first_sync (НОВЫЕ)
+# ==========================================
+
+
+@pytest.mark.asyncio
+async def test_notify_first_sync_sends_message():
+    """notify_first_sync отправляет сообщение с правильным текстом"""
+    bot = AsyncMock(spec=Bot)
+    bot.send_message = AsyncMock()
+
+    await handlers.notify_first_sync(bot, telegram_id=12345, cards_count=5, deck_name="Python")
+
+    bot.send_message.assert_awaited_once()
+    kwargs = bot.send_message.await_args.kwargs
+    assert kwargs["chat_id"] == 12345  # или первый positional arg
+    assert "5 карточек" in kwargs["text"]
+    assert "Python" in kwargs["text"]
+    assert kwargs["parse_mode"] == "HTML"
+
+    # Проверяем кнопки
+    markup = kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.text == "▶️ Начать повторение" for btn in buttons)
+    assert any(btn.text == "🏠 В главное меню" for btn in buttons)
+
+
+@pytest.mark.asyncio
+async def test_notify_first_sync_without_deck():
+    """notify_first_sync работает и без указания колоды"""
+    bot = AsyncMock(spec=Bot)
+    bot.send_message = AsyncMock()
+
+    await handlers.notify_first_sync(bot, telegram_id=99999, cards_count=1, deck_name=None)
+
+    bot.send_message.assert_awaited_once()
+    text = bot.send_message.await_args.kwargs["text"]
+    assert "1 карточек" in text
+    # Без упоминания колоды
+    assert "колоде" not in text
+
+
+@pytest.mark.asyncio
+async def test_notify_first_sync_handles_bot_error():
+    """Ошибка отправки в Telegram не пробрасывается наружу"""
+    bot = AsyncMock(spec=Bot)
+    bot.send_message = AsyncMock(side_effect=Exception("Telegram API error"))
+
+    # Не должно поднять исключение
+    await handlers.notify_first_sync(bot, telegram_id=12345, cards_count=5, deck_name="Test")
+
+
+# ==========================================
+# 5. ТЕСТЫ sync_cards С bot (НОВЫЕ)
+# ==========================================
+
+
+@pytest.mark.asyncio
+async def test_sync_cards_first_sync_calls_notify(session, user_with_token):
+    """При первом sync вызывается notify_first_sync"""
+    user, _ = user_with_token
+    user.last_sync_at = None  # гарантируем, что это первый sync
+    await session.commit()
+
+    bot = AsyncMock(spec=Bot)
+    bot.send_message = AsyncMock()
+
+    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+        result = await sync_cards(
+            session,
+            user,
+            source_file="test.md",
+            deck=None,
+            cards=[SyncCardIn(question="Q?", answer="A")],
+            bot=bot,
+        )
+
+    assert result.added == 1
+    mock_notify.assert_awaited_once()
+    # Проверяем аргументы вызова notify
+    call_args = mock_notify.await_args
+    assert call_args.args[0] == bot
+    assert call_args.args[1] == user.telegram_id
+    assert call_args.args[2] == 1  # cards_count
+
+
+@pytest.mark.asyncio
+async def test_sync_cards_subsequent_sync_skips_notify(session, user_with_token):
+    """При повторном sync notify_first_sync НЕ вызывается"""
+    user, _ = user_with_token
+    user.last_sync_at = None
+    await session.commit()
+
+    # Первый sync
+    await sync_cards(
+        session,
+        user,
+        source_file="test.md",
+        deck=None,
+        cards=[SyncCardIn(question="Q1?", answer="A1")],
+        bot=None,
+    )
+
+    # Обновляем пользователя из БД
+    await session.refresh(user)
+    assert user.last_sync_at is not None
+
+    bot = AsyncMock(spec=Bot)
+
+    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+        result = await sync_cards(
+            session,
+            user,
+            source_file="test.md",
+            deck=None,
+            cards=[SyncCardIn(question="Q2?", answer="A2")],
+            bot=bot,
+        )
+
+    assert result.added == 1
+    mock_notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_cards_no_bot_skips_notify(session, user_with_token):
+    """Если bot=None, notify_first_sync не вызывается"""
+    user, _ = user_with_token
+    user.last_sync_at = None
+    await session.commit()
+
+    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+        result = await sync_cards(
+            session,
+            user,
+            source_file="test.md",
+            deck=None,
+            cards=[SyncCardIn(question="Q?", answer="A")],
+            bot=None,
+        )
+
+    assert result.added == 1
+    mock_notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_cards_empty_first_sync_skips_notify(session, user_with_token):
+    """Если в первом sync ничего не добавлено, notify не вызывается"""
+    user, _ = user_with_token
+    user.last_sync_at = None
+    await session.commit()
+
+    # Отправляем пустой список карточек
+    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+        result = await sync_cards(
+            session,
+            user,
+            source_file="test.md",
+            deck=None,
+            cards=[],
+            bot=AsyncMock(spec=Bot),
+        )
+
+    assert result.added == 0
+    mock_notify.assert_not_awaited()
+
+
+# ==========================================
+# 6. ТЕСТЫ CALLBACK КНОПОК
 # ==========================================
 
 
@@ -295,7 +596,6 @@ async def test_cmd_review_branches(session, monkeypatch, user_with_token):
     assert "Выберите колоду для повторения:" in ok.message.answer.await_args.kwargs["text"]
 
     markup = ok.message.answer.await_args.kwargs["reply_markup"]
-
     all_callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
 
     assert any(data.startswith("revdeck:") for data in all_callbacks)
@@ -495,21 +795,18 @@ async def test_start_deck_review_handles_empty_and_sends_question(
 async def test_handler_none_user_guards(session, monkeypatch):
     patch_session(monkeypatch, session)
 
-    # Message handlers
     message = make_message()
     message.from_user = None
 
-    # Callback handlers
     cb_message = make_message()
     callback = make_callback("menu_token", message=cb_message)
     callback.from_user = None
 
     state = make_state()
 
-    # Проверяем Message handlers
-    await handlers.cmd_start(message)
+    # cmd_start теперь принимает (message, state)
+    await handlers.cmd_start(message, state)
 
-    # Проверяем Callback handlers
     await handlers.cmd_token(callback)
     await handlers.prompt_add_deck(callback, state)
     await handlers.prompt_delete_deck(callback, state)
@@ -519,7 +816,6 @@ async def test_handler_none_user_guards(session, monkeypatch):
     await handlers.cmd_stats(callback)
     await handlers.cmd_reset(callback)
 
-    # Process handlers (Message)
     msg_for_process = make_message()
     msg_for_process.from_user = None
     msg_for_process.text = "test"
