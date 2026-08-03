@@ -2,7 +2,7 @@
 
 Сервис интервального повторения: карточки пишете в Obsidian, повторяете в Telegram.
 
-Бот: @SpacedRepetitionHASKBot
+Бот: https://t.me/SpacedRepetitionHASKBot
 
 ---
 
