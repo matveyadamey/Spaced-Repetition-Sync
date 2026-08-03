@@ -381,8 +381,41 @@ async def test_menu_install_opens_install_step():
     assert "Установка плагина" in text or "Шаг 2" in text
 
 
+@pytest.mark.asyncio
+async def test_show_main_menu_with_callback():
+    """show_main_menu работает и с Message, и с CallbackQuery"""
+    callback = make_callback("some_callback")
+
+    await handlers.show_main_menu(callback)
+
+    callback.message.edit_text.assert_awaited_once()
+    assert "Главное меню" in callback.message.edit_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_send_error_with_message():
+    """_send_error отправляет answer для Message"""
+    message = make_message()
+
+    await handlers._send_error(message, "Ошибка!")
+
+    message.answer.assert_awaited_once()
+    assert "Ошибка!" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_send_error_with_callback():
+    """_send_error отправляет edit_text для CallbackQuery"""
+    callback = make_callback("some_callback")
+
+    await handlers._send_error(callback, "Ошибка!")
+
+    callback.message.edit_text.assert_awaited_once()
+    assert "Ошибка!" in callback.message.edit_text.await_args.args[0]
+
+
 # ==========================================
-# 4. ТЕСТЫ notify_first_sync (НОВЫЕ)
+# 4. ТЕСТЫ notify_first_sync
 # ==========================================
 
 
@@ -395,10 +428,13 @@ async def test_notify_first_sync_sends_message():
     await handlers.notify_first_sync(bot, telegram_id=12345, cards_count=5, deck_name="Python")
 
     bot.send_message.assert_awaited_once()
+    args = bot.send_message.await_args.args
     kwargs = bot.send_message.await_args.kwargs
-    assert kwargs["chat_id"] == 12345  # или первый positional arg
-    assert "5 карточек" in kwargs["text"]
-    assert "Python" in kwargs["text"]
+
+    # send_message(chat_id, text, reply_markup=..., parse_mode=...)
+    assert args[0] == 12345
+    assert "5 карточек" in args[1]
+    assert "Python" in args[1]
     assert kwargs["parse_mode"] == "HTML"
 
     # Проверяем кнопки
@@ -417,7 +453,8 @@ async def test_notify_first_sync_without_deck():
     await handlers.notify_first_sync(bot, telegram_id=99999, cards_count=1, deck_name=None)
 
     bot.send_message.assert_awaited_once()
-    text = bot.send_message.await_args.kwargs["text"]
+    args = bot.send_message.await_args.args
+    text = args[1]
     assert "1 карточек" in text
     # Без упоминания колоды
     assert "колоде" not in text
@@ -434,7 +471,7 @@ async def test_notify_first_sync_handles_bot_error():
 
 
 # ==========================================
-# 5. ТЕСТЫ sync_cards С bot (НОВЫЕ)
+# 5. ТЕСТЫ sync_cards
 # ==========================================
 
 
@@ -442,13 +479,14 @@ async def test_notify_first_sync_handles_bot_error():
 async def test_sync_cards_first_sync_calls_notify(session, user_with_token):
     """При первом sync вызывается notify_first_sync"""
     user, _ = user_with_token
-    user.last_sync_at = None  # гарантируем, что это первый sync
+    user.last_sync_at = None
     await session.commit()
 
     bot = AsyncMock(spec=Bot)
     bot.send_message = AsyncMock()
 
-    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+    # Патчим по месту экспорта, т.к. импорт происходит внутри функции
+    with patch("app.bot.handlers.notify_first_sync", new=AsyncMock()) as mock_notify:
         result = await sync_cards(
             session,
             user,
@@ -460,7 +498,6 @@ async def test_sync_cards_first_sync_calls_notify(session, user_with_token):
 
     assert result.added == 1
     mock_notify.assert_awaited_once()
-    # Проверяем аргументы вызова notify
     call_args = mock_notify.await_args
     assert call_args.args[0] == bot
     assert call_args.args[1] == user.telegram_id
@@ -484,13 +521,12 @@ async def test_sync_cards_subsequent_sync_skips_notify(session, user_with_token)
         bot=None,
     )
 
-    # Обновляем пользователя из БД
     await session.refresh(user)
     assert user.last_sync_at is not None
 
     bot = AsyncMock(spec=Bot)
 
-    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+    with patch("app.bot.handlers.notify_first_sync", new=AsyncMock()) as mock_notify:
         result = await sync_cards(
             session,
             user,
@@ -511,7 +547,7 @@ async def test_sync_cards_no_bot_skips_notify(session, user_with_token):
     user.last_sync_at = None
     await session.commit()
 
-    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+    with patch("app.bot.handlers.notify_first_sync", new=AsyncMock()) as mock_notify:
         result = await sync_cards(
             session,
             user,
@@ -532,8 +568,7 @@ async def test_sync_cards_empty_first_sync_skips_notify(session, user_with_token
     user.last_sync_at = None
     await session.commit()
 
-    # Отправляем пустой список карточек
-    with patch("app.services.sync_service.notify_first_sync", new=AsyncMock()) as mock_notify:
+    with patch("app.bot.handlers.notify_first_sync", new=AsyncMock()) as mock_notify:
         result = await sync_cards(
             session,
             user,
@@ -827,3 +862,179 @@ async def test_handler_none_user_guards(session, monkeypatch):
     message.answer.assert_not_awaited()
     callback.message.edit_text.assert_not_awaited()
     msg_for_process.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cmd_decks_list_shows_decks_or_empty(session, monkeypatch, user_with_token):
+    """Список колод показывает колоды или сообщение о пустом списке"""
+    patch_session(monkeypatch, session)
+    user, _ = user_with_token
+
+    # Пустой список
+    empty = make_callback("decks_list")
+    await handlers.cmd_decks_list(empty)
+    empty.answer.assert_awaited_once()
+    empty.message.edit_text.assert_awaited_once()
+    assert "Список колод пуст" in empty.message.edit_text.await_args.kwargs["text"]
+
+    # С колодами
+    await create_deck(session, user, "Матан")
+    await create_deck(session, user, "Физика")
+
+    with_decks = make_callback("decks_list")
+    await handlers.cmd_decks_list(with_decks)
+    with_decks.message.edit_text.assert_awaited_once()
+    text = with_decks.message.edit_text.await_args.kwargs["text"]
+    assert "Ваши колоды:" in text
+    assert "Матан" in text or "Физика" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_decks_list_ignores_missing_user():
+    """decks_list не падает если from_user=None"""
+    callback = make_callback("decks_list")
+    callback.from_user = None
+
+    await handlers.cmd_decks_list(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_show_main_menu_displays_correct_text():
+    """Главное меню показывает правильный текст и кнопки"""
+    message = make_message()
+
+    await handlers.show_main_menu(message)
+
+    message.answer.assert_awaited_once()
+    text = message.answer.await_args.args[0]
+    assert "Главное меню" in text
+    assert "Obsidian" in text
+    assert "Telegram" in text
+
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+
+    # Проверяем наличие всех основных кнопок
+    button_texts = [btn.text for btn in buttons]
+    assert "📦 Установка плагина" in button_texts
+    assert "🔑 Получить новый токен" in button_texts
+    assert "Повторить карточки" in button_texts
+    assert "Управление колодами" in button_texts
+    assert "Статистика" in button_texts
+    assert "Сброс прогресса" in button_texts
+    assert "Настройки" in button_texts
+
+
+# ==========================================
+# 7. ТЕСТЫ УВЕДОМЛЕНИЙ И НАСТРОЕК
+# ==========================================
+
+
+@pytest.mark.asyncio
+async def test_settings_menu_shows_notifications_status(monkeypatch):
+    """Настройки показывают статус уведомлений"""
+    callback = make_callback("settings")
+
+    with patch.object(handlers, "get_allow_notifications", new=AsyncMock(return_value=True)):
+        await handlers.settings_menu(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    text = callback.message.edit_text.await_args.kwargs["text"]
+    assert "Настройки" in text
+    assert "Уведомления: <b>Включены</b>" in text
+
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.callback_data == "disable_notifications" for btn in buttons)
+
+
+@pytest.mark.asyncio
+async def test_settings_menu_shows_disabled_notifications(monkeypatch):
+    """Настройки показывают отключённые уведомления"""
+    callback = make_callback("settings")
+
+    with patch.object(handlers, "get_allow_notifications", new=AsyncMock(return_value=False)):
+        await handlers.settings_menu(callback)
+
+    text = callback.message.edit_text.await_args.kwargs["text"]
+    assert "Уведомления: <b>Отключены</b>" in text
+
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.callback_data == "enable_notifications" for btn in buttons)
+
+
+@pytest.mark.asyncio
+async def test_disable_notifications_updates_permission(monkeypatch):
+    """Отключение уведомлений вызывает set_notifications_permission"""
+    callback = make_callback("disable_notifications")
+
+    with patch.object(handlers, "set_notifications_permission", new=AsyncMock()) as mock_set:
+        await handlers.cmd_disable_notifications(callback)
+
+    callback.answer.assert_awaited_once()
+    mock_set.assert_awaited_once_with(1001, False)
+    callback.message.edit_text.assert_awaited_once()
+    assert "Уведомления отключены" in callback.message.edit_text.await_args.args[0]
+
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.callback_data == "enable_notifications" for btn in buttons)
+
+
+@pytest.mark.asyncio
+async def test_enable_notifications_updates_permission(monkeypatch):
+    """Включение уведомлений вызывает set_notifications_permission"""
+    callback = make_callback("enable_notifications")
+
+    with patch.object(handlers, "set_notifications_permission", new=AsyncMock()) as mock_set:
+        await handlers.cmd_enable_notifications(callback)
+
+    callback.answer.assert_awaited_once()
+    mock_set.assert_awaited_once_with(1001, True)
+    callback.message.edit_text.assert_awaited_once()
+    assert "Уведомления включены" in callback.message.edit_text.await_args.args[0]
+
+    markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert any(btn.callback_data == "disable_notifications" for btn in buttons)
+
+
+@pytest.mark.asyncio
+async def test_disable_notifications_ignores_missing_user():
+    """disable_notifications не падает если from_user=None"""
+    callback = make_callback("disable_notifications")
+    callback.from_user = None
+
+    await handlers.cmd_disable_notifications(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enable_notifications_ignores_missing_user():
+    """enable_notifications не падает если from_user=None"""
+    callback = make_callback("enable_notifications")
+    callback.from_user = None
+
+    await handlers.cmd_enable_notifications(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settings_menu_ignores_missing_user():
+    """settings_menu не падает если from_user=None"""
+    callback = make_callback("settings")
+    callback.from_user = None
+
+    await handlers.settings_menu(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_not_awaited()
