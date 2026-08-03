@@ -51,6 +51,22 @@ alembic upgrade head
 alembic revision --autogenerate -m "message"
 ```
 
+### Pre-commit и линтинг
+
+Для соблюдения стандартов кода и успешного прохождения CI в проекте настроены pre-commit хуки. Они автоматически проверяют код и применяют исправления (включая `ruff check --fix`) при коммите, поэтому запускать линтер вручную не требуется.
+
+Установка хуков в локальный репозиторий:
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Обновление `.pre-commit-config.yaml` 
+```bash
+pre-commit autoupdate
+```
+
+
 ### Запуск
 
 ```bash
@@ -64,7 +80,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```bash
 cd backend
 pytest -v
-ruff check app tests
 ```
 
 Плагин:
