@@ -1,11 +1,13 @@
 import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
+    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -18,7 +20,6 @@ from app.bot.keyboards import (
     review_deck_keyboard,
     show_answer_keyboard,
 )
-from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.deck import Deck
 from app.services import deck_service
@@ -50,12 +51,23 @@ class DeckManagementStates(StatesGroup):
     waiting_for_edit_question = State()
 
 
+class OnboardingStates(StatesGroup):
+    """Состояния онбординга"""
+
+    welcome = State()
+    token_step = State()
+    install_step = State()
+    card_step = State()
+    finished = State()
+
+
 # --- 2. КЛАВИАТУРЫ ---
 def get_main_menu_kb():
     """Клавиатура главного меню"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Получить токен", callback_data="menu_token")],
+            [InlineKeyboardButton(text="📦 Установка плагина", callback_data="menu_install")],
+            [InlineKeyboardButton(text="🔑 Получить новый токен", callback_data="menu_token")],
             [InlineKeyboardButton(text="Повторить карточки", callback_data="menu_review")],
             [InlineKeyboardButton(text="Управление колодами", callback_data="menu_decks")],
             [InlineKeyboardButton(text="Статистика", callback_data="menu_stats")],
@@ -96,6 +108,126 @@ def get_back_to_main_kb():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")]
+        ]
+    )
+    return keyboard
+
+
+def get_token_keyboard(token: str, back_callback: str = "back_to_main"):
+    """Универсальная клавиатура для отображения токена с кнопкой копирования"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📋 Скопировать токен", copy_text=CopyTextButton(text=token)
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=back_callback)],
+        ]
+    )
+    return keyboard
+
+
+def get_onboarding_start_kb():
+    """Клавиатура старта онбординга"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Начать настройку", callback_data="onboarding_start")],
+            [InlineKeyboardButton(text="✅ Я уже всё установил", callback_data="onboarding_skip")],
+        ]
+    )
+    return keyboard
+
+
+def get_onboarding_token_kb(token: str):
+    """Клавиатура шага с токеном"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📋 Скопировать токен", copy_text=CopyTextButton(text=token)
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➡️ Как установить плагин", callback_data="onboarding_install"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Пропустить в главное меню", callback_data="onboarding_finish"
+                )
+            ],
+        ]
+    )
+    return keyboard
+
+
+def get_onboarding_install_kb():
+    """Клавиатура шага установки плагина"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📦 Установить плагин в Obsidian",
+                    url="obsidian://brat?repo=https://github.com/matveyadamey/Spaced-Repetition-Sync",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❓ У меня нет BRAT", callback_data="onboarding_install_brat"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➡️ Как создавать карточки", callback_data="onboarding_card"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Пропустить в главное меню", callback_data="onboarding_finish"
+                )
+            ],
+        ]
+    )
+    return keyboard
+
+
+def get_onboarding_install_brat_kb():
+    """Клавиатура инструкции по установке BRAT"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📦 Установить BRAT из Community Store",
+                    url="obsidian://show-plugin?id=tfthacker-obsidian42-brat",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀️ Назад к установке плагина", callback_data="onboarding_install"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Пропустить в главное меню", callback_data="onboarding_finish"
+                )
+            ],
+        ]
+    )
+    return keyboard
+
+
+def get_onboarding_card_kb():
+    """Клавиатура шага создания карточки"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Готово, начнём!", callback_data="onboarding_finish")],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Пропустить в главное меню", callback_data="onboarding_finish"
+                )
+            ],
         ]
     )
     return keyboard
@@ -145,8 +277,7 @@ async def show_main_menu(target: Message | CallbackQuery):
     text = (
         "<b>Главное меню</b>\n\n"
         "Вы создаёте карточки в Obsidian, плагин отправляет их на сервер, "
-        "а повторения проходят здесь, в Telegram.\n\n"
-        f"🔗 Инструкция: {settings.plugin_install_url}"
+        "а повторения проходят здесь, в Telegram."
     )
     if hasattr(target, "message") and hasattr(target.message, "edit_text"):
         await target.message.edit_text(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
@@ -154,14 +285,201 @@ async def show_main_menu(target: Message | CallbackQuery):
         await target.answer(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
 
 
-@router.message(F.text == "/start")
-async def cmd_start(message: Message) -> None:
+# --- УВЕДОМЛЕНИЯ О ПЕРВОМ SYNC ---
+async def notify_first_sync(
+    bot: Bot, telegram_id: int, cards_count: int, deck_name: str | None = None
+):
+    """
+    Отправляет поздравление после первого успешного sync из Obsidian.
+
+    Вызывается из sync_service при первом появлении карточек у пользователя.
+
+    Args:
+        bot: Инстанс бота aiogram
+        telegram_id: ID пользователя в Telegram
+        cards_count: Количество карточек в первом sync
+        deck_name: Название колоды (опционально)
+    """
+    deck_text = f" в колоде «{deck_name}»" if deck_name else ""
+    text = (
+        f"🎉 <b>Отлично! Получено {cards_count} карточек{deck_text}.</b>\n\n"
+        "Ваша первая синхронизация прошла успешно. Теперь вы можете начать повторение."
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Начать повторение", callback_data="menu_review")],
+            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")],
+        ]
+    )
+
+    try:
+        await bot.send_message(
+            telegram_id,
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        logger.info(
+            "First sync notification sent to telegram_id=%s cards=%s", telegram_id, cards_count
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to send first sync notification to telegram_id=%s: %s", telegram_id, e
+        )
+
+
+# --- ОНБОРДИНГ ---
+async def show_onboarding_welcome(target: Message | CallbackQuery, state: FSMContext):
+    """Приветственный экран онбординга"""
+    text = (
+        "👋 <b>Привет! Это Spaced Repetition Sync.</b>\n\n"
+        "Карточки пишете в Obsidian, повторяете здесь.\n\n"
+        "Давайте настроим за 3 минуты."
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            text, reply_markup=get_onboarding_start_kb(), parse_mode="HTML"
+        )
+    else:
+        await target.answer(text, reply_markup=get_onboarding_start_kb(), parse_mode="HTML")
+
+    await state.set_state(OnboardingStates.welcome)
+
+
+async def show_onboarding_token(target: Message | CallbackQuery, state: FSMContext, user_id: int):
+    """Шаг 1: получение токена"""
+    # Генерируем токен
+    token = generate_token()
+    token_hash = hash_token(token)
+
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(session, user_id)
+        user.token_hash = token_hash
+        await session.commit()
+
+    logger.info("Onboarding token generated for telegram_id=%s", user_id)
+
+    text = (
+        "🔑 <b>Шаг 1/3: Получите токен</b>\n\n"
+        f"Ваш токен:\n"
+        f"<code>{token}</code>\n\n"
+        "Нажмите «📋 Скопировать токен» и вставьте в настройки плагина Obsidian.\n\n"
+        "💡 Если потеряете токен — просто сгенерируйте новый в главном меню. "
+        "Старый автоматически перестанет работать."
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            text, reply_markup=get_onboarding_token_kb(token), parse_mode="HTML"
+        )
+    else:
+        await target.answer(text, reply_markup=get_onboarding_token_kb(token), parse_mode="HTML")
+
+    await state.set_state(OnboardingStates.token_step)
+
+
+async def show_onboarding_install(target: Message | CallbackQuery, state: FSMContext):
+    """Шаг 2: установка плагина"""
+    text = (
+        "📦 <b>Шаг 2/3: Установка плагина в Obsidian</b>\n\n"
+        "1. Obsidian → Settings → Community plugins → включите\n"
+        "2. Установите плагин <b>BRAT</b> (если ещё нет)\n"
+        "3. Иконка BRAT → Add a beta plugin\n"
+        "4. Вставьте: <code>https://github.com/matveyadamey/Spaced-Repetition-Sync</code>\n"
+        "5. Settings → Spaced Repetition Sync → включите\n"
+        "6. Вставьте токен в поле Token"
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            text, reply_markup=get_onboarding_install_kb(), parse_mode="HTML"
+        )
+    else:
+        await target.answer(text, reply_markup=get_onboarding_install_kb(), parse_mode="HTML")
+
+    await state.set_state(OnboardingStates.install_step)
+
+
+async def show_onboarding_install_brat(target: Message | CallbackQuery, state: FSMContext):
+    """Инструкция по установке BRAT"""
+    text = (
+        "📦 <b>Установка BRAT</b>\n\n"
+        "1. Откройте Obsidian\n"
+        "2. Settings → Community plugins → Browse\n"
+        "3. Найдите <b>BRAT</b> → Install → Enable\n"
+        "4. Вернитесь сюда и нажмите '📦 Установить плагин в Obsidian'"
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            text, reply_markup=get_onboarding_install_brat_kb(), parse_mode="HTML"
+        )
+    else:
+        await target.answer(text, reply_markup=get_onboarding_install_brat_kb(), parse_mode="HTML")
+
+
+async def show_onboarding_card(target: Message | CallbackQuery, state: FSMContext):
+    """Шаг 3: создание первой карточки"""
+    text = (
+        "✍️ <b>Шаг 3/3: Создайте карточку</b>\n\n"
+        "Откройте любую заметку и напишите:\n\n"
+        "<code>Что такое Python? :: Язык программирования</code>\n\n"
+        "Потом откройте палитру (Ctrl/Cmd+P) и выберите\n"
+        "«Отправить карточки на сервер».\n\n"
+        "💡 После первой синхронизации бот пришлёт вам поздравление!"
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(
+            text, reply_markup=get_onboarding_card_kb(), parse_mode="HTML"
+        )
+    else:
+        await target.answer(text, reply_markup=get_onboarding_card_kb(), parse_mode="HTML")
+
+    await state.set_state(OnboardingStates.card_step)
+
+
+async def finish_onboarding(target: Message | CallbackQuery, state: FSMContext):
+    """Завершение онбординга"""
+    await state.clear()
+
+    text = (
+        "🎉 <b>Настройка завершена!</b>\n\n"
+        "Теперь вы можете:\n"
+        "• Создавать карточки в Obsidian\n"
+        "• Синхронизировать их через плагин\n"
+        "• Повторять здесь в Telegram\n\n"
+        "Удачи в обучении!"
+    )
+
+    if hasattr(target, "message") and hasattr(target.message, "edit_text"):
+        await target.message.edit_text(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
+    else:
+        await target.answer(text, reply_markup=get_main_menu_kb(), parse_mode="HTML")
+
+
+# --- ОБРАБОТЧИКИ КОМАНД ---
+@router.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext) -> None:
     if message.from_user is None:
         return
     async with AsyncSessionLocal() as session:
         await get_or_create_user(session, message.from_user.id)
     logger.info("Command /start from telegram_id=%s", message.from_user.id)
-    await show_main_menu(message)
+
+    # Запускаем онбординг
+    await show_onboarding_welcome(message, state)
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message, state: FSMContext) -> None:
+    """Повторный запуск онбординга"""
+    if message.from_user is None:
+        return
+    logger.info("Command /help from telegram_id=%s", message.from_user.id)
+    await show_onboarding_welcome(message, state)
 
 
 @router.callback_query(F.data == "back_to_main")
@@ -171,6 +489,59 @@ async def process_back(callback: CallbackQuery, state: FSMContext):
     await show_main_menu(callback)
 
 
+# --- ОБРАБОТЧИКИ ОНБОРДИНГА ---
+@router.callback_query(F.data == "onboarding_start")
+async def onboarding_start_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Начать настройку'"""
+    await callback.answer()
+    if callback.from_user is None:
+        return
+    await show_onboarding_token(callback, state, callback.from_user.id)
+
+
+@router.callback_query(F.data == "onboarding_skip")
+async def onboarding_skip_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Я уже всё установил'"""
+    await callback.answer()
+    await finish_onboarding(callback, state)
+
+
+@router.callback_query(F.data == "onboarding_install")
+async def onboarding_install_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Как установить плагин'"""
+    await callback.answer()
+    await show_onboarding_install(callback, state)
+
+
+@router.callback_query(F.data == "onboarding_install_brat")
+async def onboarding_install_brat_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'У меня нет BRAT'"""
+    await callback.answer()
+    await show_onboarding_install_brat(callback, state)
+
+
+@router.callback_query(F.data == "onboarding_card")
+async def onboarding_card_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Как создавать карточки'"""
+    await callback.answer()
+    await show_onboarding_card(callback, state)
+
+
+@router.callback_query(F.data == "onboarding_finish")
+async def onboarding_finish_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Пропустить в главное меню' или 'Готово, начнём!'"""
+    await callback.answer()
+    await finish_onboarding(callback, state)
+
+
+@router.callback_query(F.data == "menu_install")
+async def menu_install_handler(callback: CallbackQuery, state: FSMContext):
+    """Пользователь нажал 'Установка плагина' в главном меню"""
+    await callback.answer()
+    await show_onboarding_install(callback, state)
+
+
+# --- ОСТАЛЬНЫЕ ОБРАБОТЧИКИ ---
 @router.callback_query(F.data == "menu_decks")
 async def show_decks_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -184,6 +555,7 @@ async def show_decks_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu_token")
 async def cmd_token(callback: CallbackQuery) -> None:
+    """Генерация нового токена (старый автоматически инвалидируется)"""
     if callback.from_user is None:
         return
     await callback.answer()
@@ -195,9 +567,17 @@ async def cmd_token(callback: CallbackQuery) -> None:
         await session.commit()
     logger.info("Token generated for telegram_id=%s", callback.from_user.id)
 
+    text = (
+        f"<b>🔑 Новый токен</b>\n\n"
+        f"<code>{token}</code>\n\n"
+        "Нажмите «📋 Скопировать токен» и вставьте в настройки плагина Obsidian.\n\n"
+        "⚠️ Старый токен автоматически перестаёт работать. Если не успели скопировать — "
+        "просто сгенерируйте новый."
+    )
+
     await callback.message.edit_text(
-        text=f"<b>Ваш токен:</b>\n\n<code>{token}</code>\n\n Сохраните его. Повторно показать этот токен невозможно.",
-        reply_markup=get_back_to_main_kb(),
+        text=text,
+        reply_markup=get_token_keyboard(token),
         parse_mode="HTML",
     )
 

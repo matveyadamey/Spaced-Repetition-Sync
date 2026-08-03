@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, date, datetime
 
 from sqlalchemy import delete, select
@@ -9,6 +10,8 @@ from app.models.user import User
 from app.schemas.sync import SyncCardIn, SyncResponse
 from app.services.deck_service import resolve_deck_id
 
+logger = logging.getLogger(__name__)
+
 
 async def sync_cards(
     session: AsyncSession,
@@ -17,8 +20,23 @@ async def sync_cards(
     source_file: str,
     deck: str | None,
     cards: list[SyncCardIn],
+    bot=None,
 ) -> SyncResponse:
-    """Mirror-sync cards for a single note (source_file), assign all to one deck."""
+    """Mirror-sync cards for a single note (source_file), assign all to one deck.
+
+    Args:
+        session: Асинхронная сессия БД
+        user: Пользователь
+        source_file: Путь к файлу заметки в Obsidian
+        deck: Название колоды (None для "без колоды")
+        cards: Список карточек для синхронизации
+        bot: Опциональный инстанс бота для отправки поздравления
+             после первого успешного sync
+    """
+    # Определяем первый sync ДО изменений: если last_sync_at пустой,
+    # это первая синхронизация в жизни пользователя
+    is_first_sync = user.last_sync_at is None
+
     added = 0
     updated = 0
     skipped = 0
@@ -104,6 +122,31 @@ async def sync_cards(
 
     user.last_sync_at = now
     await session.commit()
+
+    # Отправляем поздравление ПОСЛЕ commit, чтобы ошибка отправки
+    # не откатила сам sync
+    if is_first_sync and added > 0 and bot is not None:
+        try:
+            # Импорт внутри функции, чтобы избежать circular import
+            # (handlers → services → handlers)
+            from app.bot.handlers import notify_first_sync
+
+            await notify_first_sync(bot, user.telegram_id, added, deck)
+        except Exception as e:
+            # Ошибка уведомления не должна ломать sync
+            logger.warning(
+                "Failed to send first sync notification to telegram_id=%s: %s", user.telegram_id, e
+            )
+
+    logger.info(
+        "Sync completed: telegram_id=%s added=%s updated=%s skipped=%s deleted=%s is_first=%s",
+        user.telegram_id,
+        added,
+        updated,
+        skipped,
+        deleted,
+        is_first_sync,
+    )
 
     return SyncResponse(
         status="ok",

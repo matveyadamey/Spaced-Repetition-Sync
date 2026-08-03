@@ -1,5 +1,6 @@
 import logging
 
+from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,11 @@ from app.services.sync_service import sync_cards
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["sync"])
+
+
+def get_bot(request: Request) -> Bot | None:
+    """Достаёт инстанс бота из app.state (создаётся один раз в lifespan)."""
+    return getattr(request.app.state, "bot", None)
 
 
 @router.get("/decks", response_model=DeckListResponse)
@@ -73,6 +79,7 @@ async def sync_endpoint(
             source_file=payload.source_file,
             deck=payload.deck,
             cards=payload.cards,
+            bot=get_bot(request),
         )
     except ValueError as exc:
         await session.rollback()

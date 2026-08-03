@@ -18,12 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def run_bot() -> None:
-    if not settings.bot_token:
-        logger.error("BOT_TOKEN is not set; Telegram bot will not start")
-        return
-
-    bot = Bot(token=settings.bot_token)
+async def run_bot(bot: Bot) -> None:
     dp = Dispatcher()
     dp.include_router(bot_router)
     logger.info("Starting Telegram bot (long polling)")
@@ -32,18 +27,22 @@ async def run_bot() -> None:
     except Exception:
         logger.exception("Telegram bot error")
         raise
-    finally:
-        await bot.session.close()
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     bot_task: asyncio.Task | None = None
+    bot: Bot | None = None
+
     should_start_bot = bool(settings.bot_token) and settings.environment.lower() != "test"
+
     if should_start_bot:
-        bot_task = asyncio.create_task(run_bot())
+        bot = Bot(token=settings.bot_token)
+        app.state.bot = bot  # <-- сохраняем для доступа из API
+        bot_task = asyncio.create_task(run_bot(bot))
     else:
         logger.info("Telegram bot not started (missing token or ENVIRONMENT=test)")
+
     try:
         yield
     finally:
@@ -53,6 +52,8 @@ async def lifespan(_app: FastAPI):
                 await bot_task
             except asyncio.CancelledError:
                 pass
+        if bot is not None:
+            await bot.session.close()
 
 
 app = FastAPI(title="Spaced Repetition API", lifespan=lifespan)
