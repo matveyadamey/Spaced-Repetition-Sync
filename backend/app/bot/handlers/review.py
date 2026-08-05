@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.handlers.utils import _send_question, _start_deck_review
 from app.bot.keyboards import (
@@ -67,7 +67,56 @@ async def on_review_deck_callback(callback: CallbackQuery) -> None:
         return
 
     await callback.answer()
-    await _start_deck_review(callback, callback.from_user.id, deck_id)
+
+    deck_token = "0" if deck_id is None else str(deck_id)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Легкие", callback_data=f"revdiff:{deck_token}:1")],
+            [InlineKeyboardButton(text="Легкие+средние", callback_data=f"revdiff:{deck_token}:2")],
+            [
+                InlineKeyboardButton(
+                    text="Все (включая новые)", callback_data=f"revdiff:{deck_token}:3"
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Назад к выбору колоды", callback_data="menu_review")],
+        ]
+    )
+
+    await callback.message.edit_text(
+        text="<b>Выберите сложность карточек:</b>",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("revdiff:"))
+async def on_review_diff_callback(callback: CallbackQuery) -> None:
+    if callback.from_user is None or callback.data is None or callback.message is None:
+        return
+
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+
+    _, deck_token, diff_token = parts
+
+    try:
+        deck_id = None if deck_token == "0" else int(deck_token)
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+
+    try:
+        difficulty = int(diff_token)
+    except ValueError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+
+    await callback.answer()
+
+    # Передаем выбранную сложность дальше
+    await _start_deck_review(callback, callback.from_user.id, deck_id, difficulty=difficulty)
 
 
 @router.callback_query(F.data.startswith("review:"))

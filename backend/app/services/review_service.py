@@ -102,9 +102,20 @@ async def start_review_session(
     user: User,
     *,
     deck_id: int | None = None,
+    difficulty: int = 3,  # 1: легкие, 2: легкие+средние, 3: все
 ) -> ReviewSession | None:
     today = date.today()
     deck_clause = _deck_filter(deck_id)
+
+    if difficulty == 1:
+        due_q_filter = Progress.q == 1
+        include_new_cards = False
+    elif difficulty == 2:
+        due_q_filter = Progress.q.in_([1, 3])
+        include_new_cards = False
+    else:  # 3 - "все"
+        due_q_filter = Progress.q.in_([1, 3, 5])
+        include_new_cards = True
 
     due_result = await session.execute(
         select(Card.id)
@@ -114,19 +125,21 @@ async def start_review_session(
             Progress.next_review <= today,
             Progress.repetition > 0,
             deck_clause,
+            due_q_filter,
         )
         .order_by(Progress.next_review.asc(), Card.id.asc())
     )
     card_ids = list(due_result.scalars().all())
 
-    new_result = await session.execute(
-        select(Card.id)
-        .join(Progress, Progress.card_id == Card.id)
-        .where(Card.user_id == user.id, Progress.repetition == 0, deck_clause)
-        .order_by(Card.id.asc())
-        .limit(settings.max_new_cards_per_session)
-    )
-    card_ids += list(new_result.scalars().all())
+    if include_new_cards:
+        new_result = await session.execute(
+            select(Card.id)
+            .join(Progress, Progress.card_id == Card.id)
+            .where(Card.user_id == user.id, Progress.repetition == 0, deck_clause)
+            .order_by(Card.id.asc())
+            .limit(settings.max_new_cards_per_session)
+        )
+        card_ids += list(new_result.scalars().all())
 
     if not card_ids:
         return None

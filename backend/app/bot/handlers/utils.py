@@ -58,11 +58,13 @@ async def _send_question(target: Message | CallbackQuery, session_id: str, card)
 
 
 async def _start_deck_review(
-    target: Message | CallbackQuery, user_telegram_id: int, deck_id: int | None
+    target: Message | CallbackQuery, user_telegram_id: int, deck_id: int | None, difficulty: int = 3
 ) -> None:
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, user_telegram_id)
-        review_session = await start_review_session(session, user, deck_id=deck_id)
+        review_session = await start_review_session(
+            session, user, deck_id=deck_id, difficulty=difficulty
+        )
         if review_session is None:
             await _send_error(target, "В этой колоде нет карточек для повторения.")
             return

@@ -632,17 +632,49 @@ async def test_cmd_review_branches(session, monkeypatch, user_with_token):
 
 @pytest.mark.asyncio
 async def test_on_review_deck_callback_branches(monkeypatch):
+
     callback = make_callback("revdeck:bad")
     await review.on_review_deck_callback(callback)
     callback.answer.assert_awaited_once_with("Некорректные данные.", show_alert=True)
 
-    called = AsyncMock()
-    # Патчим _start_deck_review внутри модуля review, так как она там импортирована из utils
-    monkeypatch.setattr(review, "_start_deck_review", called)
     ok = make_callback("revdeck:0")
+    called = AsyncMock()
+    monkeypatch.setattr(review, "_start_deck_review", called)
+
     await review.on_review_deck_callback(ok)
+
+    called.assert_not_called()
+
     ok.answer.assert_awaited_once_with()
-    called.assert_awaited_once_with(ok, 1001, None)
+
+    ok.message.edit_text.assert_awaited_once()
+    call_args, call_kwargs = ok.message.edit_text.call_args
+    assert "Выберите сложность карточек" in call_kwargs.get("text", "")
+
+    kb = call_kwargs.get("reply_markup")
+    assert kb is not None
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "revdiff:0:1" in callbacks  # Легкие
+    assert "revdiff:0:2" in callbacks  # Легкие+средние
+    assert "revdiff:0:3" in callbacks  # Все
+
+
+@pytest.mark.asyncio
+async def test_on_review_diff_callback_branches(monkeypatch):
+
+    bad_cb = make_callback("revdiff:bad:1")
+    await review.on_review_diff_callback(bad_cb)
+    bad_cb.answer.assert_awaited_once_with("Некорректные данные.", show_alert=True)
+
+    ok_cb = make_callback("revdiff:0:3")
+    called = AsyncMock()
+    monkeypatch.setattr(review, "_start_deck_review", called)
+
+    await review.on_review_diff_callback(ok_cb)
+
+    ok_cb.answer.assert_awaited_once_with()
+
+    called.assert_awaited_once_with(ok_cb, 1001, None, difficulty=3)
 
 
 @pytest.mark.asyncio
