@@ -171,4 +171,4 @@ async def test_due_cards_preferred_over_new(session, user_with_token):
 
     review = await start_review_session(session, user, deck_id=None)
     assert review is not None
-    assert review.card_ids == [cards["Due?"].id]
+    assert review.card_ids == [cards["Due?"].id, cards["New?"].id]

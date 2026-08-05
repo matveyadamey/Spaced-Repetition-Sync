@@ -119,15 +119,14 @@ async def start_review_session(
     )
     card_ids = list(due_result.scalars().all())
 
-    if not card_ids:
-        new_result = await session.execute(
-            select(Card.id)
-            .join(Progress, Progress.card_id == Card.id)
-            .where(Card.user_id == user.id, Progress.repetition == 0, deck_clause)
-            .order_by(Card.id.asc())
-            .limit(settings.max_new_cards_per_session)
-        )
-        card_ids = list(new_result.scalars().all())
+    new_result = await session.execute(
+        select(Card.id)
+        .join(Progress, Progress.card_id == Card.id)
+        .where(Card.user_id == user.id, Progress.repetition == 0, deck_clause)
+        .order_by(Card.id.asc())
+        .limit(settings.max_new_cards_per_session)
+    )
+    card_ids += list(new_result.scalars().all())
 
     if not card_ids:
         return None
