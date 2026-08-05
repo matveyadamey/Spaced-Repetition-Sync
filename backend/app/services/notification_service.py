@@ -14,6 +14,9 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
+
+logging.getLogger("apscheduler").setLevel(logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,9 +99,11 @@ async def notify_first_sync(
         )
 
 
-async def start_scheduler():
+def start_scheduler(bot: Bot):
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_notifications, "cron", hour="12", minute="0", timezone="europe/moscow")
+    scheduler.add_job(
+        send_notifications, "cron", hour="12", minute="0", timezone="Europe/Moscow", args=[bot]
+    )
     scheduler.start()
     logger.info("Scheduler started")
 

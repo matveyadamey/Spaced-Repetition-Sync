@@ -22,11 +22,12 @@ logger = logging.getLogger(__name__)
 async def run_bot(bot: Bot) -> None:
     dp = Dispatcher()
     dp.include_router(handlers_router)
+
+    start_scheduler(bot)
+
     logger.info("Starting Telegram bot (long polling)")
     try:
         await dp.start_polling(bot)
-        await start_scheduler()
-
     except Exception:
         logger.exception("Telegram bot error")
         raise
