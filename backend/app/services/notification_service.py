@@ -1,11 +1,20 @@
+import logging
+
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import extract, func, select, update
 
+from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.review_session import ReviewSession
 from app.models.user import User
+
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 async def get_users_to_notify() -> dict[int, int]:
@@ -58,9 +67,38 @@ async def send_notifications(bot: Bot):
             print(f"Не удалось отправить уведомление пользователю {telegram_id}: {e}")
 
 
+# --- УВЕДОМЛЕНИЕ О ПЕРВОМ SYNC ---
+async def notify_first_sync(
+    bot: Bot, telegram_id: int, cards_count: int, deck_name: str | None = None
+):
+    """Отправляет поздравление после первого успешного sync."""
+    deck_text = f" в колоде «{deck_name}»" if deck_name else ""
+    text = (
+        f"🎉 <b>Отлично! Получено {cards_count} карточек{deck_text}.</b>\n\n"
+        "Ваша первая синхронизация прошла успешно. Теперь вы можете начать повторение."
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Начать повторение", callback_data="menu_review")],
+            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")],
+        ]
+    )
+
+    try:
+        await bot.send_message(telegram_id, text, reply_markup=keyboard, parse_mode="HTML")
+        logger.info(
+            "First sync notification sent to telegram_id=%s cards=%s", telegram_id, cards_count
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to send first sync notification to telegram_id=%s: %s", telegram_id, e
+        )
+
+
 async def start_scheduler():
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_notifications, "cron", hour="17", minute="0")
+    scheduler.add_job(send_notifications, "cron", hour="12", minute="0", timezone="europe/moscow")
     scheduler.start()
 
 

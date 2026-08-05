@@ -69,16 +69,23 @@ pre-commit autoupdate
 
 ### Запуск
 
+Создание .env
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+cp .env.example .env
 ```
 
-Или через Docker Compose из корня репозитория.
+
+Docker compose
+```bash
+docker compose up --build
+```
 
 ### Тесты
 
 ```bash
 cd backend
+./.venv/scripts/activate    
+pip install -r requirements.txt    
 pytest -v
 ```
 
