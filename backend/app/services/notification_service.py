@@ -100,6 +100,7 @@ async def start_scheduler():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_notifications, "cron", hour="12", minute="0", timezone="europe/moscow")
     scheduler.start()
+    logger.info("Scheduler started")
 
 
 async def get_allow_notifications(telegram_id: int) -> bool:
