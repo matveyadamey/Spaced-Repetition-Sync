@@ -22,6 +22,44 @@ Telegram Bot API (long polling)
 
 Одно процессное приложение поднимает и API, и бота.
 
+## Процесс разработки (Workflow)
+
+Разработка ведется по модели **`dev` → `main`**. Прямые коммиты в `main` запрещены.
+
+### Шаги работы над задачей
+
+1. **Локальная разработка и тестирование**
+   - Вся разработка ведется локально.
+   - Бэкенд и инфраструктура (PostgreSQL) поднимаются через Docker Compose:
+     ```bash
+     docker compose up --build
+     ```
+   - Бот запускается локально через Python для удобной отладки и hot-reload.
+   - Перед коммитом обязательно прогоняются тесты:
+     ```bash
+     pytest -v
+     ```
+
+2. **Тестирование на dev-боте**
+   - В настройках плагина Obsidian указать Server URL: http://localhost:8000
+   - На тестовом боте проверяется end-to-end сценарий:
+     - синхронизация карточек из Obsidian,
+     - работа онбординга и команд,
+     - процесс повторения,
+     - корректность FSM и callback-кнопок.
+
+3. **Создание Merge Request**
+   - Если на тестовом боте всё работает корректно — создается MR из `dev`в `main`, который триггерит деплой в прод.
+
+
+### Правила
+
+- ✅ Ветка `dev` — рабочая, в неё идёт вся текущая разработка.
+- ✅ Ветка `main` — стабильная, соответствует production.
+- ❌ Нельзя коммитить прямо в `main` — только через MR.
+- ❌ Нельзя мёржить MR, если CI (`pytest`, `ruff`, `typecheck`) не зелёный.
+- ❌ Нельзя мёржить в `main` без предварительного прогона на тестовом боте.
+
 ## Backend
 
 ### Зависимости
@@ -66,14 +104,12 @@ pre-commit install
 pre-commit autoupdate
 ```
 
-
 ### Запуск
 
 Создание .env
 ```bash
 cp .env.example .env
 ```
-
 
 Docker compose
 ```bash
@@ -122,7 +158,8 @@ CI (`.github/workflows/ci.yml`) на push/PR в `main`: pytest + ruff, typecheck
 | `app/services/review_service.py` | Сессии `/review`, статистика, reset |
 | `app/services/export_service.py` | Экспорт колоды в Markdown (`/export_deck`) |
 | `app/services/token_service.py` | Генерация и хеширование токенов |
-| `app/bot/handlers.py` | Команды и callback-кнопки |
+| `app/services/notification_service.py` | Отправка системных уведомлений (напр. первый sync) |
+| `app/bot/handlers/` | Пакет с роутерами: `start`, `onboarding`, `decks`, `review`, `settings` |
 | `app/api/sync.py` | `POST /api/v1/sync` |
 | `app/api/status.py` | `GET /api/v1/status` |
 
@@ -156,7 +193,6 @@ app.vault.getMarkdownFiles()
 app.vault.read(file)
 ```
 
-
 ## Деплой
 
 Пошаговая инструкция: [DEPLOY.md](DEPLOY.md) (Railway из GitHub + релизы плагина для BRAT).
@@ -164,3 +200,4 @@ app.vault.read(file)
 ## Логирование
 
 Уровни `INFO` / `ERROR`. Логируются команды бота, API-запросы, ошибки auth/DB/sync. Сырые токены в логи не пишутся.
+
