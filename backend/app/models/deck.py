@@ -19,4 +19,4 @@ class Deck(Base):
     )
 
     user = relationship("User", back_populates="decks")
-    cards = relationship("Card", back_populates="deck")
+    cards = relationship("Card", back_populates="deck", passive_deletes=True)

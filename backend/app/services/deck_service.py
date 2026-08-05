@@ -1,14 +1,74 @@
-from sqlalchemy import select
+from dataclasses import dataclass
+
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.deck import Deck
-from app.models.user import User
+from app.models import Card, Deck, User
 
 NO_DECK_LABEL = "без колоды"
 
 
+@dataclass(slots=True)
+class DeckWithCardCount:
+    deck: Deck
+    cards_count: int
+
+
+@dataclass(slots=True)
+class DeckListStats:
+    decks: list[DeckWithCardCount]
+    no_deck_count: int
+
+
 def normalize_deck_name(name: str) -> str:
     return " ".join(name.strip().split()).casefold()
+
+
+async def list_decks_with_card_counts(
+    session: AsyncSession,
+    user: User,
+) -> DeckListStats:
+    cards_count_subquery = (
+        select(func.count(Card.id))
+        .where(
+            Card.deck_id == Deck.id,
+            Card.user_id == user.id,
+        )
+        .correlate(Deck)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(
+            Deck,
+            cards_count_subquery.label("cards_count"),
+        )
+        .where(Deck.user_id == user.id)
+        .order_by(Deck.name.asc())
+    )
+
+    result = await session.execute(stmt)
+
+    decks = [
+        DeckWithCardCount(
+            deck=deck,
+            cards_count=int(cards_count or 0),
+        )
+        for deck, cards_count in result.all()
+    ]
+
+    no_deck_stmt = select(func.count(Card.id)).where(
+        Card.user_id == user.id,
+        Card.deck_id.is_(None),
+    )
+
+    no_deck_result = await session.execute(no_deck_stmt)
+    no_deck_count = int(no_deck_result.scalar_one())
+
+    return DeckListStats(
+        decks=decks,
+        no_deck_count=no_deck_count,
+    )
 
 
 async def list_decks(session: AsyncSession, user: User) -> list[Deck]:
@@ -19,12 +79,14 @@ async def list_decks(session: AsyncSession, user: User) -> list[Deck]:
 
 
 async def list_names_of_decks(session: AsyncSession, user: User) -> str:
-    decks = await list_decks(session, user)
-    names_of_decks: list[str] = []
-    deck: Deck
-    for deck in decks:
-        names_of_decks.append(deck.name)
-    return "\n".join(names_of_decks)
+    stats = await list_decks_with_card_counts(session, user)
+
+    lines: list[str] = [f"{item.deck.name} ({item.cards_count})" for item in stats.decks]
+
+    if stats.no_deck_count > 0:
+        lines.append(f"Без колоды ({stats.no_deck_count})")
+
+    return "\n".join(lines)
 
 
 async def get_deck_by_name(session: AsyncSession, user: User, name: str) -> Deck | None:
@@ -63,11 +125,30 @@ async def create_deck(session: AsyncSession, user: User, name: str) -> Deck:
 
 
 async def delete_deck(session: AsyncSession, user: User, name: str) -> int:
-    """Delete deck; cards become без колоды (deck_id NULL). Returns deleted deck count."""
+    """
+    Delete deck; cards become без колоды (deck_id NULL).
+    Returns deleted deck count.
+    """
     deck = await get_deck_by_name(session, user, name)
     if deck is None:
         raise ValueError("Колода не найдена")
-    await session.delete(deck)
+
+    await session.execute(
+        update(Card)
+        .where(
+            Card.user_id == user.id,
+            Card.deck_id == deck.id,
+        )
+        .values(deck_id=None)
+    )
+
+    await session.execute(
+        delete(Deck).where(
+            Deck.user_id == user.id,
+            Deck.id == deck.id,
+        )
+    )
+
     await session.commit()
     return 1
 
