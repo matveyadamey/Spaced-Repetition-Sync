@@ -196,6 +196,7 @@ async def rate_current_card(
         ease_factor=progress.ease_factor,
         repetition=progress.repetition,
     )
+    progress.q = q
     progress.interval = sm2.interval
     progress.ease_factor = sm2.ease_factor
     progress.repetition = sm2.repetition
