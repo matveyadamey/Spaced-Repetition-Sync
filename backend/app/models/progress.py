@@ -17,7 +17,7 @@ class Progress(Base):
     card_id: Mapped[int] = mapped_column(
         ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True
     )
-    q: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=1)
+    q: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     interval: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     ease_factor: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)
     repetition: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
