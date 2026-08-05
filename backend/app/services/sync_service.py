@@ -33,8 +33,7 @@ async def sync_cards(
         bot: Опциональный инстанс бота для отправки поздравления
              после первого успешного sync
     """
-    # Определяем первый sync ДО изменений: если last_sync_at пустой,
-    # это первая синхронизация в жизни пользователя
+
     is_first_sync = user.last_sync_at is None
 
     added = 0
@@ -69,11 +68,9 @@ async def sync_cards(
             )
         )
 
-    # All user cards keyed by question (uniqueness is global per user).
     result = await session.execute(select(Card).where(Card.user_id == user.id))
     existing_by_question = {card.question: card for card in result.scalars().all()}
 
-    # Cards currently belonging to this note (for mirror delete).
     note_result = await session.execute(
         select(Card).where(Card.user_id == user.id, Card.source_file == source_file)
     )
@@ -123,17 +120,12 @@ async def sync_cards(
     user.last_sync_at = now
     await session.commit()
 
-    # Отправляем поздравление ПОСЛЕ commit, чтобы ошибка отправки
-    # не откатила сам sync
     if is_first_sync and added > 0 and bot is not None:
         try:
-            # Импорт внутри функции, чтобы избежать circular import
-            # (handlers → services → handlers)
-            from app.bot.handlers import notify_first_sync
+            from app.services.notification_service import notify_first_sync
 
             await notify_first_sync(bot, user.telegram_id, added, deck)
         except Exception as e:
-            # Ошибка уведомления не должна ломать sync
             logger.warning(
                 "Failed to send first sync notification to telegram_id=%s: %s", user.telegram_id, e
             )

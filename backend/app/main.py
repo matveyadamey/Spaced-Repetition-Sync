@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.status import router as status_router
 from app.api.sync import router as sync_router
-from app.bot.handlers import router as bot_router
+from app.bot.handlers import router as handlers_router
 from app.config import settings
+from app.services.notification_service import start_scheduler
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -20,10 +21,12 @@ logger = logging.getLogger(__name__)
 
 async def run_bot(bot: Bot) -> None:
     dp = Dispatcher()
-    dp.include_router(bot_router)
+    dp.include_router(handlers_router)
     logger.info("Starting Telegram bot (long polling)")
     try:
         await dp.start_polling(bot)
+        await start_scheduler()
+
     except Exception:
         logger.exception("Telegram bot error")
         raise
@@ -38,7 +41,7 @@ async def lifespan(app: FastAPI):
 
     if should_start_bot:
         bot = Bot(token=settings.bot_token)
-        app.state.bot = bot  # <-- сохраняем для доступа из API
+        app.state.bot = bot
         bot_task = asyncio.create_task(run_bot(bot))
     else:
         logger.info("Telegram bot not started (missing token or ENVIRONMENT=test)")
