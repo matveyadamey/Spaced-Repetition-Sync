@@ -2,6 +2,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards import (
     back_to_main_kb,
@@ -160,33 +161,24 @@ async def settings_menu(callback: CallbackQuery) -> None:
 
     allow = await get_allow_notifications(callback.from_user.id)
 
-    if allow:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
-                [
-                    InlineKeyboardButton(
-                        text="Отключить уведомления", callback_data="disable_notifications"
-                    )
-                ],
-            ]
-        )
-        text_status = "Уведомления: <b>Включены</b>"
-    else:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад в главное меню", callback_data="back_to_main")],
-                [
-                    InlineKeyboardButton(
-                        text="Включить уведомления", callback_data="enable_notifications"
-                    )
-                ],
-            ]
-        )
-        text_status = "Уведомления: <b>Отключены</b>"
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="◀️ Назад в главное меню",
+        callback_data="back_to_main",
+    )
+
+    builder.button(
+        text="Отключить уведомления" if allow else "Включить уведомления",
+        callback_data="disable_notifications" if allow else "enable_notifications",
+    )
+
+    builder.adjust(1)
+
+    status = "Включены" if allow else "Отключены"
 
     await callback.message.edit_text(
-        text=f"⚙️ <b>Настройки</b>\n\n{text_status}",
-        reply_markup=keyboard,
+        text=f"⚙️ <b>Настройки</b>\n\nУведомления: <b>{status}</b>",
+        reply_markup=builder.as_markup(),
         parse_mode="HTML",
     )
