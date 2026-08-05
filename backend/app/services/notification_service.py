@@ -105,7 +105,6 @@ def start_scheduler(bot: Bot):
         send_notifications, "cron", hour="12", minute="0", timezone="Europe/Moscow", args=[bot]
     )
     scheduler.start()
-    logger.info("Scheduler started")
 
 
 async def get_allow_notifications(telegram_id: int) -> bool:

@@ -70,14 +70,16 @@ async def show_onboarding_token(target: Message | CallbackQuery, state: FSMConte
 async def show_onboarding_install(target: Message | CallbackQuery, state: FSMContext):
     """Шаг 2: установка плагина ("""
     text = (
-        "📦 <b>Шаг 2/3: Установка плагина в Obsidian</b>\n\n"
-        "1. Obsidian → Settings → Community plugins → включите\n"
-        "2. Установите плагин <b>BRAT</b> из Community Store\n"
-        "3. Иконка BRAT → <b>Add beta plugin</b>\n"
-        "4. Вставьте ссылку на репозиторий:\n"
+        "<b>Шаг 2/3: Установка плагина в Obsidian</b>\n\n"
+        "1. Скачайте и установите Obsidian\n"
+        "2. Установите плагин <b>BRAT</b>(по кнопке ниже инструкция по установке)\n"
+        "3. Вернитесь на основной экран Obsidian. На боковой панели нажмите на появившийся значок BRAT — откроется меню.\n"
+        "4. Выберите <b>Add a beta plugin for testing</b> \n"
+        "5. В поле <b>Repository</b> Вставьте ссылку на репозиторий:\n"
         "<code>https://github.com/matveyadamey/Spaced-Repetition-Sync</code>\n"
-        "5. Settings → <b>Spaced Repetition Sync</b> → включите\n"
-        "6. Вставьте токен в поле <b>Token</b>"
+        "6. В Select a version выберите latest. Нажмите Add plugin. Плагин установится.\n"
+        "7. Откройте настройки → Сторонние плагины → Spaced Repetition Sync и включите его \n"
+        "8. Вставьте токен в поле <b>Token</b>"
     )
 
     if hasattr(target, "message") and hasattr(target.message, "edit_text"):
@@ -93,7 +95,7 @@ async def show_onboarding_install(target: Message | CallbackQuery, state: FSMCon
 async def show_onboarding_install_brat(target: Message | CallbackQuery, state: FSMContext):
     """Инструкция по установке BRAT"""
     text = (
-        "📦 <b>Установка BRAT</b>\n\n"
+        "<b>Установка BRAT</b>\n\n"
         "1. Откройте Obsidian\n"
         "2. Settings → Community plugins → <b>Browse</b>\n"
         "3. Найдите <b>BRAT</b> → Install → Enable\n"
@@ -115,8 +117,8 @@ async def show_onboarding_card(target: Message | CallbackQuery, state: FSMContex
         "Откройте любую заметку и напишите:\n\n"
         "<code>Что такое Python? :: Язык программирования</code>\n\n"
         "Потом откройте палитру (Ctrl/Cmd+P) и выберите\n"
-        "<b>«Отправить карточки на сервер»</b>.\n\n"
-        "💡 После первой синхронизации бот пришлёт вам поздравление!"
+        "<b>«Отправить карточки на сервер»</b>.\n"
+        "Выберите колоду (или + Добавить колоду / без колоды). \n"
     )
 
     if hasattr(target, "message") and hasattr(target.message, "edit_text"):

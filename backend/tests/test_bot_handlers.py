@@ -314,7 +314,7 @@ async def test_onboarding_skip_finishes_immediately():
 
 @pytest.mark.asyncio
 async def test_onboarding_install_shows_instructions():
-    """Шаг установки показывает текстовую инструкцию без deep link"""
+    """Шаг установки показывает текстовую инструкцию"""
     callback = make_callback("onboarding_install")
     state = make_state()
 
@@ -328,9 +328,8 @@ async def test_onboarding_install_shows_instructions():
     assert "Шаг 2/3" in text
     assert "Установка плагина" in text
 
-    assert "Community plugins" in text
     assert "BRAT" in text
-    assert "Add beta plugin" in text
+    assert "Add a beta plugin" in text
 
     assert "https://github.com/matveyadamey/Spaced-Repetition-Sync" in text
 
