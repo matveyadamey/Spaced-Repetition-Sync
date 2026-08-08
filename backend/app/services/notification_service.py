@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -38,7 +39,7 @@ async def get_users_to_notify() -> dict[int, int]:
         .group_by(User.id, User.telegram_id)
         .having(
             func.now() - func.coalesce(func.max(ReviewSession.created_at), User.created_at)
-            > func.make_interval(hours=24)
+            > timedelta(hours=24)
         )
     )
 
@@ -111,7 +112,8 @@ async def get_allow_notifications(telegram_id: int) -> bool:
     async with AsyncSessionLocal() as session:
         query = select(User.allow_notifications).where(User.telegram_id == telegram_id)
         result = await session.execute(query)
-        return result.scalar_one_or_none() or True
+        val = result.scalar_one_or_none()
+        return True if val is None else val
 
 
 async def set_notifications_permission(telegram_id: int, allow: bool):
