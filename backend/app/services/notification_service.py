@@ -60,9 +60,14 @@ async def send_notifications(bot: Bot):
                     inline_keyboard=[
                         [
                             InlineKeyboardButton(
+                                text="Повторить карточки", callback_data="menu_review"
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
                                 text="Отключить уведомления", callback_data="disable_notifications"
                             )
-                        ]
+                        ],
                     ]
                 ),
                 parse_mode="HTML",
@@ -103,7 +108,7 @@ async def notify_first_sync(
 def start_scheduler(bot: Bot):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        send_notifications, "cron", hour="15", minute="33", timezone="Europe/Moscow", args=[bot]
+        send_notifications, "cron", hour="12", minute="00", timezone="Europe/Moscow", args=[bot]
     )
     scheduler.start()
 

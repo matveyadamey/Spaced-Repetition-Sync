@@ -95,6 +95,18 @@ async def test_send_notifications_success():
         assert "Отключить уведомления" in str(kwargs["reply_markup"])
         assert kwargs["parse_mode"] == "HTML"
 
+        markup = kwargs["reply_markup"]
+
+        assert len(markup.inline_keyboard) == 2
+
+        review_button = markup.inline_keyboard[0][0]
+        assert review_button.text == "Повторить карточки"
+        assert review_button.callback_data == "menu_review"
+
+        disable_button = markup.inline_keyboard[1][0]
+        assert disable_button.text == "Отключить уведомления"
+        assert disable_button.callback_data == "disable_notifications"
+
 
 @pytest.mark.asyncio
 async def test_send_notifications_handles_exceptions(capfd):
@@ -169,7 +181,7 @@ def test_start_scheduler():
         start_scheduler(bot)
 
         mock_scheduler_instance.add_job.assert_called_once_with(
-            send_notifications, "cron", hour="15", minute="33", timezone="Europe/Moscow", args=[bot]
+            send_notifications, "cron", hour="12", minute="00", timezone="Europe/Moscow", args=[bot]
         )
         mock_scheduler_instance.start.assert_called_once()
 
