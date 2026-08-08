@@ -169,7 +169,7 @@ def test_start_scheduler():
         start_scheduler(bot)
 
         mock_scheduler_instance.add_job.assert_called_once_with(
-            send_notifications, "cron", hour="12", minute="0", timezone="Europe/Moscow", args=[bot]
+            send_notifications, "cron", hour="15", minute="33", timezone="Europe/Moscow", args=[bot]
         )
         mock_scheduler_instance.start.assert_called_once()
 

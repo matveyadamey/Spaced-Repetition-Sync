@@ -103,7 +103,7 @@ async def notify_first_sync(
 def start_scheduler(bot: Bot):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        send_notifications, "cron", hour="15", minute="30", timezone="Europe/Moscow", args=[bot]
+        send_notifications, "cron", hour="15", minute="33", timezone="Europe/Moscow", args=[bot]
     )
     scheduler.start()
 
