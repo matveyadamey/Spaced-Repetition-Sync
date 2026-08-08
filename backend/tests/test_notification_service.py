@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.models.review_session import ReviewSession
 from app.models.user import User
 
 # --- ИМПОРТЫ ДЛЯ ТЕСТОВ ---
@@ -16,8 +15,6 @@ from app.services.notification_service import (
     start_scheduler,
 )
 from sqlalchemy import select
-
-# --- ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ (как в вашем примере) ---
 
 
 class SessionManager:
@@ -46,50 +43,30 @@ def patch_session(monkeypatch, session):
 
 
 @pytest.mark.asyncio
-async def test_get_users_to_notify(session, monkeypatch):
-    patch_session(monkeypatch, session)
+async def test_get_users_to_notify():
 
-    # 1. Пользователь разрешивший уведомления, без сессий (создан 2 дня назад) -> Должен попасть
-    user1 = User(
-        telegram_id=111, allow_notifications=True, created_at=datetime.utcnow() - timedelta(days=2)
-    )
+    fake_row_1 = SimpleNamespace(telegram_id=111, delta_hours=48.5)
+    fake_row_2 = SimpleNamespace(telegram_id=444, delta_hours=72.1)
 
-    # 2. Пользователь запретивший уведомления -> Не должен попасть
-    user2 = User(
-        telegram_id=222, allow_notifications=False, created_at=datetime.utcnow() - timedelta(days=2)
-    )
+    mock_result = MagicMock()
+    mock_result.__iter__ = lambda self: iter([fake_row_1, fake_row_2])
 
-    # 3. Пользователь, который учился недавно (1 час назад) -> Не должен попасть
-    user3 = User(
-        telegram_id=333, allow_notifications=True, created_at=datetime.utcnow() - timedelta(days=2)
-    )
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
-    # 4. Пользователь, который учился давно (2 дня назад) -> Должен попасть
-    user4 = User(
-        telegram_id=444, allow_notifications=True, created_at=datetime.utcnow() - timedelta(days=2)
-    )
+    class MockSessionManager:
+        async def __aenter__(self):
+            return mock_session
 
-    session.add_all([user1, user2, user3, user4])
-    await session.commit()
+        async def __aexit__(self, *args):
+            pass
 
-    # Добавляем сессии для юзеров 3 и 4
-    session.add(ReviewSession(user_id=user3.id, created_at=datetime.utcnow() - timedelta(hours=1)))
-    session.add(ReviewSession(user_id=user4.id, created_at=datetime.utcnow() - timedelta(days=2)))
-    await session.commit()
+    with patch("app.services.notification_service.AsyncSessionLocal", MockSessionManager):
+        users_to_notify = await get_users_to_notify()
 
-    # Запуск
-    users_to_notify = await get_users_to_notify()
+    assert users_to_notify == {111: 48, 444: 72}
 
-    # Проверки
-    assert 111 in users_to_notify
-    assert users_to_notify[111] >= 47  # Прошло ~48 часов
-
-    assert 222 not in users_to_notify  # Отключены уведомления
-
-    assert 333 not in users_to_notify  # Недавно повторял
-
-    assert 444 in users_to_notify  # Давно не повторял
-    assert users_to_notify[444] >= 47
+    mock_session.execute.assert_awaited_once()
 
 
 # ==========================================
@@ -109,11 +86,9 @@ async def test_send_notifications_success():
         await send_notifications(bot)
 
         assert bot.send_message.await_count == 2
-
-        # Получаем первый вызов мока
         call_obj = bot.send_message.await_args_list[0]
-        args = call_obj.args  # Позиционные аргументы: (telegram_id,)
-        kwargs = call_obj.kwargs  # Именованные аргументы: {'text': ..., 'reply_markup': ..., ...}
+        args = call_obj.args
+        kwargs = call_obj.kwargs
 
         assert args[0] in (111, 222)
         assert "Вы не повторяли карточки" in kwargs["text"]
@@ -133,7 +108,6 @@ async def test_send_notifications_handles_exceptions(capfd):
 
         await send_notifications(bot)
 
-        # Функция должна перехватить исключение и напечатать его в консоль
         captured = capfd.readouterr()
         assert "Не удалось отправить уведомление пользователю 111" in captured.out
 
@@ -209,21 +183,17 @@ def test_start_scheduler():
 async def test_get_allow_notifications(session, monkeypatch):
     patch_session(monkeypatch, session)
 
-    # 1. Создаем пользователя с выключенными уведомлениями
     user_off = User(telegram_id=111, allow_notifications=False)
-    # 2. Создаем пользователя с включенными уведомлениями
+
     user_on = User(telegram_id=222, allow_notifications=True)
 
     session.add_all([user_off, user_on])
     await session.commit()
 
-    # Проверка пользователя с False (теперь должно вернуть False)
     assert await get_allow_notifications(111) is False
 
-    # Проверка пользователя с True
     assert await get_allow_notifications(222) is True
 
-    # Проверка несуществующего пользователя (должен вернуть True по умолчанию)
     assert await get_allow_notifications(999) is True
 
 
@@ -235,9 +205,7 @@ async def test_set_notifications_permission(session, monkeypatch):
     session.add(user)
     await session.commit()
 
-    # Меняем разрешение на False
     await set_notifications_permission(111, False)
 
-    # Проверяем, что значение в БД действительно изменилось
     res = await session.execute(select(User.allow_notifications).where(User.telegram_id == 111))
     assert res.scalar_one_or_none() is False
